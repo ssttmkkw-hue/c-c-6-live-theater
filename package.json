@@ -1,0 +1,19 @@
+{
+  "name": "ai-live-theater",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AI Live Theater / AI 现场戏剧 — streamable, directable 3D improv theater",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node tests/parser.test.mjs"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 现场戏剧 · AI Live Theater</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23250b14'/%3E%3Cpath d='M10 14h44v8c0 16-9 28-22 28S10 38 10 22z' fill='%23e8b64c'/%3E%3Ccircle cx='24' cy='26' r='3' fill='%23250b14'/%3E%3Ccircle cx='40' cy='26' r='3' fill='%23250b14'/%3E%3Cpath d='M23 36q9 9 18 0' stroke='%23250b14' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="panel">
+      <header>
+        <h1 data-i18n="title">AI 现场戏剧</h1>
+        <button id="langBtn" class="small" title="Language / 语言">EN</button>
+      </header>
+      <p class="tag" data-i18n="tagline"></p>
+
+      <section>
+        <label for="script" data-i18n="scriptLabel"></label>
+        <textarea id="script" rows="7" spellcheck="false"></textarea>
+        <div class="samples" id="samples"></div>
+        <div class="row">
+          <button id="startBtn" class="primary" data-i18n="start"></button>
+          <button id="pauseBtn" data-i18n="pause" disabled></button>
+          <button id="stopBtn" data-i18n="stop" disabled></button>
+          <button id="replayBtn" data-i18n="replay" disabled></button>
+        </div>
+        <label class="check"><input type="checkbox" id="slowParse" /> <span data-i18n="slowParse"></span></label>
+        <label class="check"><input type="checkbox" id="muteChk" /> <span data-i18n="mute"></span></label>
+      </section>
+
+      <section>
+        <div class="stats">
+          <div><span class="k" data-i18n="status"></span><b id="status">—</b></div>
+          <div><span class="k" data-i18n="ttfl"></span><b id="ttfl">— ms</b></div>
+          <div><span class="k" data-i18n="firstBeat"></span><b id="tfb">— ms</b></div>
+        </div>
+      </section>
+
+      <section>
+        <label for="directIn" data-i18n="directLabel"></label>
+        <div class="row">
+          <input id="directIn" type="text" autocomplete="off" />
+          <button id="directBtn" data-i18n="send"></button>
+        </div>
+        <div class="chips" id="chips"></div>
+        <div id="directLog" class="dlog"></div>
+      </section>
+
+      <section>
+        <label data-i18n="viewLabel"></label>
+        <div class="row" id="views"></div>
+      </section>
+
+      <section>
+        <label data-i18n="beatsLabel"></label>
+        <ol id="beatLog"></ol>
+        <div class="row">
+          <button id="exportBtn" class="small" data-i18n="export"></button>
+          <button id="importBtn" class="small" data-i18n="import"></button>
+          <input type="file" id="importFile" accept=".json,application/json" hidden />
+        </div>
+      </section>
+
+      <details>
+        <summary data-i18n="aiSummary"></summary>
+        <p class="note" data-i18n="aiNote"></p>
+        <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="API key" />
+        <input id="aiModel" type="text" autocomplete="off" spellcheck="false" placeholder="model" />
+        <div class="row">
+          <button id="keySave" class="small" data-i18n="keySave"></button>
+          <button id="keyClear" class="small" data-i18n="keyClear"></button>
+        </div>
+        <label for="parserSel" data-i18n="parserLabel"></label>
+        <select id="parserSel"></select>
+      </details>
+    </aside>
+
+    <main id="stageWrap">
+      <canvas id="stage"></canvas>
+      <div id="subtitle"><div id="subDir"></div><div><span id="subName"></span><span id="subText"></span></div></div>
+      <div id="toast"></div>
+    </main>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
