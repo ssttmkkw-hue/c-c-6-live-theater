@@ -22,6 +22,19 @@ const EMO = {
 };
 export const EMOTIONS = Object.keys(EMO);
 
+// ---- faces: brow lift / brow tilt (+ = inner end down), eye openness, mouth curve (+ smile / - frown), mouth width ----
+const FACE = {
+  neutral:       { lift: 0, tilt: 0, eye: 1, curve: 0.05, w: 1 },
+  angry:         { lift: -0.006, tilt: 0.55, eye: 0.78, curve: -0.7, w: 1.1 },
+  sad:           { lift: 0.012, tilt: -0.5, eye: 0.82, curve: -0.8, w: 0.8 },
+  proud:         { lift: 0.012, tilt: 0.1, eye: 0.85, curve: 0.35, w: 1 },
+  contemplative: { lift: 0.008, tilt: -0.1, eye: 0.9, curve: -0.1, w: 0.8 },
+  gasp:          { lift: 0.034, tilt: 0, eye: 1.3, curve: 0, w: 0.7, open: 0.9 },
+  happy:         { lift: 0.012, tilt: 0.05, eye: 0.8, curve: 1, w: 1.3 },
+  afraid:        { lift: 0.03, tilt: -0.4, eye: 1.25, curve: -0.5, w: 0.9, open: 0.4 },
+  tender:        { lift: 0.006, tilt: -0.2, eye: 0.85, curve: 0.6, w: 0.9 },
+};
+
 // ---- gestures: return overrides given time-in-gesture t and strength a (0.6..1.4) ----
 const GEST = {
   none: () => ({}),
@@ -49,6 +62,13 @@ export const GESTURES = Object.keys(GEST);
 
 const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.05, ...o });
 const mesh = (geo, m, p = [0, 0, 0]) => { const x = new THREE.Mesh(geo, m); x.position.set(...p); x.castShadow = true; return x; };
+let _blob = null;
+const blobMat = () => _blob ??= (() => { // tiny procedural radial falloff, no canvas
+  const N = 32, d = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const r = Math.hypot(x - 15.5, y - 15.5) / 16; const a = Math.max(0, 1 - r); d.set([0, 0, 0, Math.round(255 * a * a)], (y * N + x) * 4); }
+  const t = new THREE.DataTexture(d, N, N); t.needsUpdate = true;
+  return new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: 0.55, depthWrite: false });
+})();
 const cap = (r, l) => new THREE.CapsuleGeometry(r, l, 4, 10);
 
 export class Actor {
@@ -68,6 +88,8 @@ export class Actor {
     this.cur = { chestX: 0, headX: 0, headZ: 0, L: [0, 0.1, 0], R: [0, 0.1, 0], kneel: 0, walk: 0, shake: 0, bounce: 0, breath: 1, twist: 0, shift: 0, emph: 0, nod: 0 };
     this.remain = 0; this.nodAt = 1.5 + Math.random() * 2; this.fid = null; this.fidAt = 3 + Math.random() * 4; this.cape = null;
     this.mats = [];
+    this.pulseV = 0; this.pulseAge = 9; this.mouthKick = 0; this.blinkAt = 1.5 + Math.random() * 3; this.blinkT = 9; this.eyeX = 0; this.eyeY = 0; this.sacX = 0; this.sacY = 0; this.sacAt = 1;
+    this.face = { lift: 0, tilt: 0, eye: 1, curve: 0.05, w: 1, open: 0 }; this.capeP = [0, 0, 0];
     this.build(spec);
     this.root.visible = false;
   }
@@ -84,7 +106,6 @@ export class Actor {
     const trim = M(g ? '#ffffff' : c.clone().lerp(new THREE.Color('#fff4d8'), 0.65).getStyle(), g ? {} : { emissive: '#3a3020', emissiveIntensity: 1 });
     const skin = M(skinHex);
     const black = new THREE.MeshStandardMaterial({ color: g ? '#10203a' : '#151515', roughness: 0.4 });
-    this.eyeMat = black; if (this.look.accessory === 'antenna') { black.color.set('#00e5ff'); black.emissive = new THREE.Color('#00bcd4'); }
 
     this.root = new THREE.Group();
     this.body = new THREE.Group(); this.body.position.y = 0.97; this.root.add(this.body);
@@ -95,17 +116,35 @@ export class Actor {
     this.spine.add(mesh(new THREE.BoxGeometry(0.4, 0.05, 0.25), trim, [0, 0.06, 0]));
     this.spine.add(mesh(new THREE.BoxGeometry(0.1, 0.07, 0.03), trim, [0, 0.06, 0.13])); // buckle
     this.spine.add(mesh(new THREE.BoxGeometry(0.42, 0.045, 0.26), trim, [0, 0.62, 0]));   // collar / shoulder line
-    if (this.look.cape) { // short cape: a silhouette cue from the back of the house
+    if (this.look.cape) { // cape: three hinged panels that lag behind the body, so it bends and swings
       this.cape = new THREE.Group(); this.cape.position.set(0, 0.62, -0.17); this.spine.add(this.cape);
-      this.cape.add(mesh(new THREE.BoxGeometry(0.5, 0.9, 0.04), dark, [0, -0.45, -0.02]));
-      this.cape.add(mesh(new THREE.BoxGeometry(0.52, 0.05, 0.05), trim, [0, -0.9, -0.02]));
+      this.capeJ = []; let parent = this.cape;
+      for (let i = 0; i < 3; i++) {
+        const j = new THREE.Group(); j.position.y = i ? -0.3 : 0; parent.add(j);
+        j.add(mesh(new THREE.BoxGeometry(0.5 + i * 0.04, 0.3, 0.035), i % 2 ? cloth : dark, [0, -0.15, -0.02]));
+        if (i === 2) j.add(mesh(new THREE.BoxGeometry(0.56, 0.045, 0.05), trim, [0, -0.3, -0.02]));
+        this.capeJ.push(j); parent = j;
+      }
     }
 
     this.neck = new THREE.Group(); this.neck.position.y = 0.7; this.spine.add(this.neck);
     this.neck.add(mesh(new THREE.SphereGeometry(0.175, 20, 16), skin, [0, 0.19, 0]));
-    for (const sx of [-1, 1]) this.neck.add(mesh(new THREE.SphereGeometry(0.026, 8, 6), black, [sx * 0.065, 0.22, 0.155]));
-    this.mouth = mesh(new THREE.BoxGeometry(0.08, 0.025, 0.02), M('#6b1d1d'), [0, 0.1, 0.165]);
+    // face: sclera + tracking pupils (emissive for ghost/antenna), brows, an open-mouth blob plus a smile/frown arc
+    const glowEye = g || this.look.accessory === 'antenna';
+    const scl = glowEye ? new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: g ? '#bfe3ff' : '#00e5ff', emissiveIntensity: 1.1, roughness: 0.3 }) : new THREE.MeshStandardMaterial({ color: '#fafaf5', roughness: 0.35 });
+    this.eyeMat = scl; this.eyes = []; this.brows = [];
+    const browM = M(g ? '#cfe6ff' : ['#2a1a10', '#3a2616', '#1c1c1c', '#5a3a1a'][this.index % 4]);
+    for (const sx of [-1, 1]) {
+      const eg = new THREE.Group(); eg.position.set(sx * 0.066, 0.215, 0.138); this.neck.add(eg);
+      const sc = new THREE.Mesh(new THREE.SphereGeometry(0.047, 12, 10), scl); sc.scale.z = 0.7; eg.add(sc);
+      const pu = new THREE.Mesh(new THREE.SphereGeometry(0.026, 10, 8), black); pu.scale.z = 0.5; pu.position.z = 0.03; eg.add(pu);
+      this.eyes.push({ g: eg, pu });
+      const br = mesh(new THREE.BoxGeometry(0.075, 0.015, 0.02), browM, [sx * 0.066, 0.285, 0.142]); br.castShadow = false; br.userData.sx = sx; this.neck.add(br); this.brows.push(br);
+    }
+    this.mouth = mesh(new THREE.SphereGeometry(0.032, 10, 8), M('#4a1010'), [0, 0.098, 0.15]); this.mouth.scale.set(1, 0.3, 0.4); this.mouth.castShadow = false;
     this.neck.add(this.mouth);
+    this.smile = mesh(new THREE.TorusGeometry(0.04, 0.0075, 6, 14, Math.PI), M(g ? '#a9c9ee' : '#7a2a2a'), [0, 0.12, 0.158]); this.smile.castShadow = false;
+    this.neck.add(this.smile);
     this.neck.add(mesh(new THREE.BoxGeometry(0.03, 0.03, 0.04), skin, [0, 0.16, 0.18])); // nose
     this.accessory(this.look.accessory, M, cloth);
 
@@ -132,11 +171,13 @@ export class Actor {
 
     if (g) { // ghosts have no legs: a tapering shroud instead
       for (const l of [this.legL, this.legR]) l.hp.visible = false;
-      const skirt = mesh(new THREE.CylinderGeometry(0.24, 0.44, 0.95, 18, 1, true), cloth, [0, -0.5, 0]); skirt.material = cloth.clone(); skirt.material.side = THREE.DoubleSide; this.mats.push(skirt.material); skirt.material.userData.base = cloth.opacity;
+      const sg = new THREE.CylinderGeometry(0.24, 0.44, 0.95, 20, 6, true);
+      const skirt = mesh(sg, cloth, [0, -0.5, 0]); skirt.material = cloth.clone(); skirt.material.side = THREE.DoubleSide; this.mats.push(skirt.material); skirt.material.userData.base = cloth.opacity;
+      this.skirt = { geo: sg, base: Float32Array.from(sg.attributes.position.array) };
       this.body.add(skirt);
-      this.body.add(mesh(new THREE.CylinderGeometry(0.44, 0.47, 0.06, 18, 1, true), M('#ffffff', { side: THREE.DoubleSide }), [0, -0.97, 0])); // hem
       this.light = new THREE.PointLight('#8fc4ff', 1.2, 6); this.light.position.y = 1.2; this.root.add(this.light);
     }
+    this.blob = new THREE.Mesh(new THREE.CircleGeometry(0.5, 16), blobMat()); this.blob.rotation.x = -Math.PI / 2; this.blob.position.y = 0.014; this.blob.renderOrder = 1; this.root.add(this.blob);
     this.root.scale.setScalar(1.04);
     this.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
     // name tag
@@ -155,16 +196,16 @@ export class Actor {
         if (kind === 'crown-hair') add(mesh(new THREE.BoxGeometry(0.34, 0.5, 0.12), hairM), [0, 0.0, -0.12]);
         break;
       }
-      case 'hair': { const m = mesh(new THREE.SphereGeometry(0.19, 16, 10, 0, TAU, 0, Math.PI * 0.55), hairM); add(m, [0, 0.2, -0.01]); break; }
-      case 'hair-long': { const m = mesh(new THREE.SphereGeometry(0.19, 16, 10, 0, TAU, 0, Math.PI * 0.55), hairM); add(m, [0, 0.2, -0.01]); add(mesh(new THREE.BoxGeometry(0.34, 0.45, 0.1), hairM), [0, 0.0, -0.13]); break; }
+      case 'hair': { const m = mesh(new THREE.SphereGeometry(0.19, 16, 10, 0, TAU, 0, Math.PI * 0.55), hairM); m.rotation.x = -0.45; add(m, [0, 0.21, -0.03]); break; }
+      case 'hair-long': { const m = mesh(new THREE.SphereGeometry(0.19, 16, 10, 0, TAU, 0, Math.PI * 0.55), hairM); m.rotation.x = -0.45; add(m, [0, 0.21, -0.03]); add(mesh(new THREE.BoxGeometry(0.34, 0.45, 0.1), hairM), [0, 0.0, -0.13]); break; }
       case 'hat': { add(mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.025, 20), cloth), [0, 0.34, 0]); add(mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.2, 16), cloth), [0, 0.45, 0]); break; }
-      case 'helmet': { add(mesh(new THREE.SphereGeometry(0.2, 16, 10, 0, TAU, 0, Math.PI * 0.55), M('#8a9097', { metalness: 0.7, roughness: 0.4 })), [0, 0.22, 0]); break; }
-      case 'hood': { add(mesh(new THREE.SphereGeometry(0.2, 16, 12, 0, TAU, 0, Math.PI * 0.7), cloth), [0, 0.2, -0.02]); break; }
+      case 'helmet': { const m = mesh(new THREE.SphereGeometry(0.2, 16, 10, 0, TAU, 0, Math.PI * 0.5), M('#8a9097', { metalness: 0.7, roughness: 0.4 })); m.rotation.x = -0.4; add(m, [0, 0.23, -0.03]); break; }
+      case 'hood': { const m = mesh(new THREE.SphereGeometry(0.2, 16, 12, 0, TAU, 0, Math.PI * 0.68), cloth); m.rotation.x = -0.6; add(m, [0, 0.2, -0.045]); break; }
       case 'jester': {
         const a = M('#e74c3c'), b = M('#f1c40f');
         const c1 = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 8), a); c1.position.set(-0.12, 0.45, 0); c1.rotation.z = 0.7; c1.castShadow = true; h.add(c1);
         const c2 = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 8), b); c2.position.set(0.12, 0.45, 0); c2.rotation.z = -0.7; c2.castShadow = true; h.add(c2);
-        add(mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, TAU, 0, Math.PI * 0.45), M('#2e86c1')), [0, 0.22, 0]);
+        { const m = mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, TAU, 0, Math.PI * 0.42), M('#2e86c1')); m.rotation.x = -0.4; add(m, [0, 0.23, -0.03]); }
         break;
       }
       case 'antenna': { add(mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.2), M('#555')), [0, 0.46, 0]); add(mesh(new THREE.SphereGeometry(0.035, 8, 6), M('#e74c3c', { emissive: '#e74c3c', emissiveIntensity: 0.8 })), [0, 0.58, 0]); break; }
@@ -195,7 +236,10 @@ export class Actor {
     if (name === 'kneel') this.kneelState = 1; else if (name === 'stand') this.kneelState = 0;
     this.gestureName = name; this.gestureT = 0; this.gestureA = strength;
   }
-  setSpeaking(v) { this.speaking = v; }
+  nod() { this.nodAge = 0; }
+  setSpeaking(v) { if (v && !this.speaking) { this.pulseAge = 9; this.talkT = 0; } this.speaking = v; }
+  /** a spoken word landed (real TTS boundary or the fake word clock): kick arms/chest/nod/jaw. */
+  pulse(strength = 1) { this.pulseV = Math.min(1.3, Math.max(this.pulseV, 0.6 + 0.5 * strength)); this.mouthKick = 1; this.pulseAge = 0; }
   headPos(out = new THREE.Vector3()) { return this.neck.getWorldPosition(out).add(new THREE.Vector3(0, 0.25, 0)); }
 
   update(dt, time) {
@@ -259,7 +303,8 @@ export class Actor {
     if (ov.kneel != null) tg.kneel = ov.kneel;
     if (ov.twist != null) tg.twist = ov.twist;
     // vocal emphasis: while speaking, every phrase peak pushes the arms/torso a little further (also on held poses like point/proud)
-    const emph = this.speaking ? Math.pow(Math.max(0, Math.sin(this.talkT * 3.3 + this.index)), 2) : 0;
+    this.pulseAge += dt; this.pulseV *= Math.exp(-5.5 * dt); this.mouthKick *= Math.exp(-9 * dt);
+    const emph = !this.speaking ? 0 : this.pulseAge < 1.6 ? Math.min(1, this.pulseV) : 0.35 * Math.pow(Math.max(0, Math.sin(this.talkT * 3.3 + this.index)), 2);
     if (emph > 0 && this.gestureName !== 'talk' && this.gestureName !== 'none') {
       tg.R = [tg.R[0] - 0.14 * emph * amp, tg.R[1] + 0.05 * emph, tg.R[2] - 0.12 * emph]; tg.L = [tg.L[0] - 0.1 * emph * amp, tg.L[1] + 0.1 * emph, tg.L[2]];
     }
@@ -300,7 +345,15 @@ export class Actor {
     this.neck.rotation.set(cur.headX + nod, this.headYaw * 0.7 + Math.sin(T * 0.4 + this.index) * 0.05, cur.headZ + (idle ? Math.sin(T * 0.33 + this.index) * 0.04 : 0), 'YXZ');
     const setArm = (a, v, side) => { a.sh.rotation.set(v[0] + trem * 2, 0, side * (v[1] + Math.sin(T * 1.8 + side) * 0.015 + idleW * Math.sin(T * 0.9 + side * 1.7) * 0.03), 'XYZ'); a.el.rotation.x = v[2]; };
     setArm(this.armL, cur.L, 1); setArm(this.armR, cur.R, -1);
-    if (this.cape) this.cape.rotation.x = 0.06 + cur.walk * 0.28 + Math.sin(T * 1.6) * 0.02 + cur.chestX * 0.3;
+    if (this.cape) { // hinged chain: each panel chases the one above with a lag, plus a gentle flutter
+      let prev = 0.06 + cur.walk * 0.3 + cur.chestX * 0.25;
+      this.cape.rotation.x = prev;
+      for (let i = 0; i < 3; i++) {
+        const goal = (0.05 + cur.walk * 0.22 + Math.abs(sw) * cur.walk * 0.1) * (i + 1) * 0.6 + Math.sin(T * 1.7 - i * 0.9) * 0.035 * (i + 1) + this.headYaw * 0.05 * i;
+        this.capeP[i] = lerp(this.capeP[i], goal, 1 - Math.exp(-(7 - i * 2) * dt));
+        this.capeJ[i].rotation.x = this.capeP[i]; this.capeJ[i].rotation.z = Math.sin(T * 1.3 - i) * 0.03 * (i + 1) + cur.shift * 0.02;
+      }
+    }
 
     // legs: walk cycle + kneel + stance shift
     const kn = cur.kneel, w = cur.walk;
@@ -318,9 +371,44 @@ export class Actor {
     else { this.body.position.x = sh * 0.05; this.body.rotation.z = -sh * 0.035; }
     this.body.position.y = y;
 
-    // mouth
-    const open = this.speaking ? 0.4 + Math.abs(Math.sin(this.talkT * 13) * Math.sin(this.talkT * 5.3)) * 1.6 : 0.3;
-    this.mouth.scale.set(1 - (this.speaking ? 0.2 : 0), open, 1);
+    // ---- face: emotion-driven brows / lids / mouth, blinks, tracking pupils ----
+    const fc = this.face, ft = FACE[this.emotion] || FACE.neutral, fk = 1 - Math.exp(-9 * dt), fi = clamp(0.4 + this.intensity, 0.4, 1.3);
+    fc.lift = lerp(fc.lift, ft.lift * fi, fk); fc.tilt = lerp(fc.tilt, ft.tilt * fi, fk); fc.eye = lerp(fc.eye, 1 + (ft.eye - 1) * fi, fk);
+    fc.curve = lerp(fc.curve, ft.curve * fi, fk); fc.w = lerp(fc.w, ft.w, fk); fc.open = lerp(fc.open, (ft.open || 0) * fi, fk);
+    this.blinkAt -= dt; if (this.blinkAt <= 0) { this.blinkT = 0; this.blinkAt = 2 + Math.random() * 3.5; if (Math.random() < 0.2) this.blinkAt = 0.35; }
+    this.blinkT += dt; const bl = this.blinkT < 0.16 ? Math.sin(this.blinkT / 0.16 * Math.PI) : 0;
+    const eo = Math.max(0.06, fc.eye * (1 - bl * 0.95));
+    this.sacAt -= dt; if (this.sacAt <= 0) { this.sacAt = 0.6 + Math.random() * 1.8; this.sacX = (Math.random() - 0.5) * 0.35; this.sacY = (Math.random() - 0.5) * 0.25; }
+    let ex = 0, ey = 0;
+    if (lookYaw != null) {
+      const res = angDiff(this.yaw + this.headYaw * 1.05, lookYaw);
+      ex = clamp(res / 0.6, -1, 1);
+      const lp = this.lookGetter(); if (lp) { const dd = Math.hypot(lp.x - this.pos.x, lp.z - this.pos.y) || 1; ey = clamp((lp.y - 1.6) / dd * 3 + this.neck.rotation.x * -1.5, -1, 1); }
+    }
+    this.eyeX = lerp(this.eyeX, ex + this.sacX * 0.4, 1 - Math.exp(-14 * dt)); this.eyeY = lerp(this.eyeY, ey + this.sacY * 0.4, 1 - Math.exp(-14 * dt));
+    for (const e of this.eyes) { e.g.scale.y = eo; e.pu.position.x = this.eyeX * 0.021; e.pu.position.y = this.eyeY * 0.015 / Math.max(0.5, eo) * 0.8; e.pu.position.z = 0.03 + (1 - Math.abs(this.eyeX) * 0.2) * 0.002; }
+    for (const br of this.brows) {
+      const sx = br.userData.sx, side = this.emotion === 'contemplative' && sx > 0 ? 0.02 : 0;
+      br.position.y = 0.285 + fc.lift + side + (1 - eo) * -0.015 * (eo < 0.5 ? 0 : 1) + bl * -0.012; br.rotation.z = sx * fc.tilt;
+    }
+    const talk = this.speaking ? 0.22 + this.mouthKick * 1.1 + Math.abs(Math.sin(this.talkT * 11) * Math.sin(this.talkT * 4.7)) * 0.45 : 0;
+    const openAmt = clamp(fc.open + talk, 0, 1.6);
+    this.mouth.scale.set(0.55 * fc.w + openAmt * 0.12, 0.12 + openAmt * 0.95, 0.4);
+    this.mouth.position.y = 0.098 - openAmt * 0.006; this.mouth.visible = openAmt > 0.05;
+    this.smile.scale.set(fc.w * 0.95, -fc.curve * 0.55 + (Math.abs(fc.curve) < 0.04 ? 0.05 : 0), 1);
+    this.smile.position.y = 0.112 + fc.curve * 0.012 - openAmt * 0.012; this.smile.visible = openAmt < 0.55 && Math.abs(this.smile.scale.y) > 0.02;
+
+    // ghost hem: a travelling wave on the lower rings
+    if (this.skirt) {
+      const pos = this.skirt.geo.attributes.position, bs = this.skirt.base, N = pos.count;
+      for (let i = 0; i < N; i++) {
+        const x = bs[i * 3], y = bs[i * 3 + 1], z = bs[i * 3 + 2], low = clamp((0.475 - y) / 0.95, 0, 1), ang = Math.atan2(z, x);
+        const wv = 1 + low * low * 0.18 * Math.sin(ang * 5 + T * 2.4 + low * 3);
+        pos.array[i * 3] = x * wv; pos.array[i * 3 + 2] = z * wv; pos.array[i * 3 + 1] = y - low * low * 0.07 * (1 + Math.sin(ang * 4 - T * 2.1));
+      }
+      pos.needsUpdate = true;
+    }
+    this.blob.scale.setScalar(this.ghost ? 0.9 : 1); this.blob.material = blobMat();
 
     // ghost fade / flicker
     if (this.ghost) {

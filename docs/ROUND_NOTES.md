@@ -1,5 +1,45 @@
 # Round notes / 轮次记录
 
+## Round 3 (this round) / 第 3 轮
+
+### What changed and why (English)
+Round 2 made the show *visible*; round 3 makes it feel *directed and live*. Implemented from `docs/UPGRADE_R3.md`: all P0 items and most P1 items.
+
+**P0**
+1. **Auto director camera** (`scene.js:cue/solveShot`, `director.js:next`). Default view is now **Auto**; buttons are Auto / Audience / Close / Free (manual overrides Auto). Each beat the Director sends `theater.cue({speaker, listener, intensity, emotion, entrance, close, beatNo})`. Shot menu: *wide* (entrances, first beat, curtain call, a re-establishing wide every 3–4 beats), *over-the-shoulder from the avatar's seat* (default dialogue shot: camera just behind/above the gold avatar, hat in the foreground; FOV is solved so the speaker+listener span ~60 % of frame width), *two-shot* (house side, normal to the pair), *close-up* (intensity >= 0.75, gasp/afraid, or an "angrier" directive). Close/two-shot cameras are placed ~30° off the speaker's `yaw`, on the house side, tried against the set's prop AABBs (`sets.obstacles`). Min hold 2.2 s (a cue inside the hold keeps the shot type and just follows the new speaker); a type change is a hard cut, same-type changes ease (dt-based). The avatar's pointer/ring is hidden in the OTS shot (it would sit in the lens). Curtain-call spotlight fixed: `frameShot` no longer runs in the `finished` state, `finish()` cues the wide shot.
+2. **Instant, richer directing.** `injectFront(beat, {interrupt:true})` cancels the in-flight line (`speech.cancel()`, onend is ignored because it checks `this.cur === c`) and starts the new beat in the same call (measured `direct()` -> new beat in ~2 ms). Mood directives inject a short bilingual ad-lib (pool in `i18n.js`, picked by the *show's* language), a motivated step (toward on anger, away on fear/sad; for afraid/gasp the *listener* reacts), `theater.react` + audience sound. Unrecognised free text becomes an acted **stage direction** beat (`inferEmotion/Gesture/Intensity`, italic subtitle) — `dirNone` is now only reachable for empty input. New: "enter a guard" / "来个侍卫" (`addchar`: declare + enter + one-line entrance). Parser hardening: multiple moods ("angrier and sadder": last wins the emotion, deltas summed, both labelled), `\b` on fast/hug/normal/slow/replay/reset, bare 结局 no longer triggers an ending change.
+3. **Readable faces** (`actor.js`). White sclera + pupils that track the look target (plus tiny saccades), emotion brows (angry inward-down, sad inward-up, gasp/afraid raised), blinks (random, occasional double), lids per emotion, an open-mouth blob + smile/frown arc per emotion. ~9 face meshes. Ghost and antenna eyes stay emissive. Hair/helmet/hood/jester caps were tilted back so fringes don't cover the brows.
+4. **Speech-synced performance.** `speech.speak` passes `onboundary`; `speech.words()` gives word spans (CJK per character). Subtitles reveal word by word (DOM spans, no `innerHTML`, spoken words at full opacity). Every word fires `actor.pulse()` (arms/chest/nod/jaw) in place of the free-running sine (the sine remains only as a fallback when no pulse came for 1.6 s). When muted / headless / no boundary events a **fake word clock** derived from `estimateMs` (longer words and punctuation weigh more) drives the same path; if a voice never emits boundaries, the clock takes over after 0.7 s.
+5. **Set selection fix.** `pickSet` scores all rules (text hits x2 + name hits) instead of first-match; the set is **locked after the first performed beat** (only a `scene` event or replay can change it; replay now always yields its `scene`). Bare 王 dropped (国王/王后/王座/王子/公主), 街 -> 街头/街道, `guard`/`street`/`king`/`queen` word-bounded. "robot meets ghost at the convenience store" -> shop; 小王和老王吵架 -> moonlit stage.
+
+**P1 done**: obstacle/pair **avoidance** (push-out only; sets export AABBs); **anticipation** during `pauseMs` (next speaker pre-turns, listeners nod, next walk starts early); **idle business** when the queue is empty and the stream isn't done (think / shrug / look around); **synthesised audience sound** (`src/audio.js`: gasp whoosh, laugh murmur, sigh murmur, applause; AudioContext created lazily after a user gesture and only from beat 2 on; respects mute; throttled); **local parser variety** (seeded business beats + small gesture/move/intensity variations; `parseLocal(text, {seed})`, first beat and endings untouched); **costumes** (3-panel hinged lagging cape, wavy ghost hem with per-vertex displacement, blob contact shadows from a procedural DataTexture); **entrance logic** (only the opening cast walks on at once; later-introduced actors wait in the wings until their first line / enter beat); **set prewarm** (other sets' canvases/props are built from idle timers so a cold set never lands inside the first-beat window).
+
+**Skipped**: shop prop depth / 1024x512 backdrops (P1 stretch), all P2 (adaptive quality, AI `scene`/`camera` hints, Playwright regression). Not touched per the skip list: IK/skinning, new shadow lights, pathfinding, share URLs, TTS replacement.
+
+### Timing (headless Chromium, software GL, local parser)
+Start -> first line (`#ttfl`), fresh page, TTS unavailable: Hamlet idea 12 ms, "robot meets ghost at the convenience store" 10 ms (cold, 100 ms after load) / 9 ms (warm), detective 10 ms, king/jester 9 ms, "Alice meets Bob" 11 ms. Before prewarming a cold shop was 29–44 ms because its canvases were painted inside the window. `direct('angrier and sadder')` mid-line -> new beat started: ~2.4 ms. Rendering is still ~5 fps on software GL (dt-based, so it looks the same, just choppier).
+
+### Remaining limitations
+- On real TTS voices the boundary path is untested here (headless has no voices); it is covered by the same code path as the fake clock but should be eyeballed in a real browser.
+- Cameras clip-test only against prop AABBs; the proscenium/flats are handled by position clamps, not tests. A speaker facing upstage gets a 3/4-back shot.
+- OTS shot depends on the avatar's seat being clear; very wide pairs make a wide FOV.
+- Avoidance is push-out only: fast crossings can still briefly overlap. Ghosts avoid solid actors only loosely.
+- Free text only maps to the keyword emotion/gesture tables, so subtle directions ("hesitate") become a generic pensive beat.
+- No adaptive quality yet; ~40 audience meshes + shadows are still costly on weak GPUs. Backdrops are still 512x256.
+- Audio and TTS can't be heard in the headless checks; levels were chosen conservatively.
+
+### 本轮改动（中文）
+第 2 轮解决了"看得见"，第 3 轮解决"像被导演、像现场"。按 `docs/UPGRADE_R3.md` 完成全部 P0 和大部分 P1。
+- **自动运镜**：默认「自动运镜」，按钮为 自动/观众席/特写/自由（手动覆盖自动）。景别：全景（登场、首拍、谢幕、每 3–4 拍重建）、观众肩后过肩镜头（默认对话镜头，小人帽子在前景）、双人中景、特写（强度≥0.75、惊讶/害怕、"更生气"）。特写离说话者朝向约 30°、位于观众席一侧并避开道具；最短停留 2.2 秒，换景硬切、同景缓动，全部基于 dt。谢幕聚光灯修复。
+- **即时导演**：`injectFront(..., {interrupt:true})` 立刻打断当前台词（约 2 ms 内新拍开始）；情绪指令插入一句双语即兴台词 + 动机步 + 观众反应与声音；听不懂的文本变成被表演出来的"舞台提示"；新增"来个侍卫 / enter a guard"；解析器支持多情绪组合并收紧了 fast/hug/normal/结局 的匹配。
+- **可读的脸**：大眼睛 + 会追视的瞳孔、情绪眉毛、眨眼、嘴型（开口/微笑/皱眉）；鬼魂和机器人眼睛保持自发光。
+- **语音联动**：`onboundary` 驱动逐词字幕和重音脉冲；静音/无语音/无边界事件时用假词钟（由 `estimateMs` 推出）。
+- **选景修复**：计分选景，首拍后锁定（只有 scene 事件或重播能改），去掉裸"王"、收紧"街"和 kay。
+- **P1**：避让、预判转身/提前走位、解析等待期闲笔、WebAudio 合成观众声、本地解析器种子变体与闲笔、三段披风/波浪鬼魂裙摆/接触阴影、后来者在侧台等待登场、场景预热（首句 9–12 ms）。
+- **未做**：便利店道具纵深、P2（自适应画质、AI 的 scene/camera 提示、Playwright 回归）。
+
+---
+
 ## English
 
 ### What v1 (round 1) built

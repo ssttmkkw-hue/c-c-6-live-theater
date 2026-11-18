@@ -5,6 +5,7 @@ import { samples } from './samples.js';
 import { pickParser, parsers } from './parsers/index.js';
 import { KEY_STORAGE, MODEL_STORAGE } from './parsers/ai.js';
 import { speech } from './speech.js';
+import { audio } from './audio.js';
 import { SET_LABEL } from './theater/sets.js';
 
 const $ = id => document.getElementById(id);
@@ -26,14 +27,26 @@ function toast(msg) { els.toast.textContent = msg; els.toast.classList.add('on')
 const lighten = hex => { const n = parseInt(hex.slice(1), 16); const m = c => Math.round(c + (255 - c) * 0.6); return `rgb(${m(n >> 16)},${m((n >> 8) & 255)},${m(n & 255)})`; };
 const fmt = ms => ms == null ? '— ms' : Math.round(ms) + ' ms';
 
+let wordSpans = [];
 const director = new Director(theater, {
+  onAudience: (e, k) => audio.react(e, k), onAudienceApplause: s => audio.applause(s),
+  onWord: k => { for (let i = 0; i <= k && i < wordSpans.length; i++) wordSpans[i].classList.add('on'); },
   onStatus: setStatus,
   onMetric: m => { if (m.ttfl != null) { els.ttfl.textContent = fmt(m.ttfl); console.info('[theater] start → first line:', Math.round(m.ttfl), 'ms'); } if (m.tfb != null) els.tfb.textContent = fmt(m.tfb); },
   onSubtitle: s => {
     if (!s) { els.sub.classList.remove('on'); return; }
     if (s.end) { els.subDir.textContent = ''; els.subName.textContent = ''; els.subText.textContent = t('finished'); els.sub.classList.add('on'); return; }
     els.subName.textContent = s.name; els.subName.style.color = s.ghost ? '#bfe3ff' : lighten(s.color);
-    els.subText.textContent = s.text || (s.direction ? `（${s.direction}）` : '');
+    // word-by-word: DOM spans (no innerHTML); words light up as the TTS boundary / word clock reaches them
+    els.subText.textContent = ''; wordSpans = [];
+    if (s.text && s.words?.length) {
+      let p = 0;
+      for (const w of s.words) {
+        if (w.i > p) els.subText.append(document.createTextNode(s.text.slice(p, w.i)));
+        const sp = document.createElement('span'); sp.className = 'w'; sp.textContent = s.text.slice(w.i, w.i + w.len); els.subText.append(sp); wordSpans.push(sp); p = w.i + w.len;
+      }
+      if (p < s.text.length) els.subText.append(document.createTextNode(s.text.slice(p)));
+    } else els.subText.textContent = s.text || (s.direction ? `（${s.direction}）` : '');
     els.subText.classList.toggle('dir', !s.text);
     els.subDir.textContent = s.text && s.direction ? `（${s.direction}）` : '';
     els.sub.classList.add('on');
@@ -89,7 +102,7 @@ function renderSamples() {
 }
 function renderViews() {
   const box = $('views'); box.textContent = '';
-  for (const [v, k] of [['audience', 'viewAud'], ['close', 'viewClose'], ['free', 'viewFree']]) {
+  for (const [v, k] of [['auto', 'viewAuto'], ['audience', 'viewAud'], ['close', 'viewClose'], ['free', 'viewFree']]) {
     const b = document.createElement('button'); b.className = 'small' + (theater.view === v ? ' active' : ''); b.textContent = t(k);
     b.onclick = () => { theater.setView(v); renderViews(); }; box.append(b);
   }
@@ -168,4 +181,6 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+// build the other sets one at a time in idle moments, so a set change (or the first beat) never pays for canvas work
+(function prewarm(i = 0) { const ids = ['ramparts', 'shop', 'alley', 'hall']; if (i >= ids.length) return; setTimeout(() => { if (!director.firstLine || director.state === 'finished' || director.state === 'idle') { try { theater.sets.warm(ids[i]); } catch { /* ignore */ } prewarm(i + 1); } else prewarm(i); }, 700); })();
 window.__theater = { director, theater }; // handy for debugging / automated tests

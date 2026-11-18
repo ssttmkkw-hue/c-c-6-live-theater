@@ -49,5 +49,7 @@ summary { cursor:pointer; color:var(--mut); } details input, details select { ma
 #subDir { font-size:13px; font-style:italic; color:#c9b8a8; margin-bottom:4px; } #subDir:empty { display:none; }
 #subName { font-weight:700; margin-right:10px; font-size:15px; } #subName:empty { display:none; }
 #subText.dir { font-style:italic; color:#d8c9bd; }
+#subText .w { opacity:.38; transition:opacity .12s; }
+#subText .w.on { opacity:1; }
 #toast { position:absolute; top:16px; left:50%; transform:translateX(-50%); background:#000c; border:1px solid var(--gold); padding:8px 14px; border-radius:8px; opacity:0; transition:opacity .3s; pointer-events:none; max-width:70%; }
 #toast.on { opacity:1; }

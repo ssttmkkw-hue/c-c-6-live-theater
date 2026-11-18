@@ -164,9 +164,52 @@ export function createTheater(canvas) {
   const pNpc = { ph: 1.3, sp: 0.8, attn: 0.9, rx: 0.1, jolt: 0, lean: 0, clapSp: 13 };
 
   // ---- state / API ----
-  let view = 'audience', focus = new THREE.Vector3(0, 1.5, 0), spotColor = new THREE.Color('#fff1d0'), applause = 0, time = 0;
+  let view = 'auto', focus = new THREE.Vector3(0, 1.5, 0), spotColor = new THREE.Color('#fff1d0'), applause = 0, time = 0;
   let shot = []; // live world positions of the actors in frame: [speaker, ...others]
   let mood = { emo: 'neutral', level: 0 };
+  // ---- auto director camera ----
+  // cue() picks a shot type (wide / over-the-shoulder from the avatar's seat / two-shot / close-up); the planner holds each
+  // shot >= HOLD seconds, and the rig is solved every frame from the *live* actor positions + facing.
+  const HOLD = 2.2;
+  const cam = { type: 'wide', since: -9, sinceWide: 0, subj: null, other: null, forced: null, lastBeat: -1 };
+  const seatHead = new THREE.Vector3(ps.x + 0.38, ps.y + 0.55 + 1.75, ps.z + 1.7);
+  const gp = new THREE.Vector3(), gl = new THREE.Vector3();
+  let gFov = HOME.fov, snap = true;
+  const inObstacle = (x, y, z, pad) => { for (const o of sets.obstacles) if (x > o.x0 - pad && x < o.x1 + pad && z > o.z0 - pad && z < o.z1 + pad && y < o.h + 0.25) return true; return false; };
+  const fovFor = (h, dist) => clamp(2 * Math.atan(h / 2 / dist) * 180 / Math.PI, 11, 44);
+  function solveShot() {
+    const sp = cam.subj, ot = cam.other, t = cam.type;
+    if (!sp || t === 'wide') { gp.copy(HOME.pos); gl.copy(HOME.look); gFov = HOME.fov; return; }
+    const sx = sp.pos.x, sz = sp.pos.y;
+    if (t === 'ots') { // behind & above the gold avatar, looking over their hat at the speaker (+ listener)
+      let mx = sx, mz = sz, span = 0;
+      if (ot) { mx = (sx + ot.pos.x) / 2; mz = (sz + ot.pos.y) / 2; span = Math.hypot(sx - ot.pos.x, sz - ot.pos.y); }
+      gp.copy(seatHead); gl.set(mx, 1.2, mz);
+      const dist = Math.hypot(gp.x - mx, gp.z - mz), asp = camera.aspect || 1.6;
+      gFov = fovFor(Math.max(2.5 / 0.62, (span + 1.1) / (0.62 * asp)), dist); return;
+    }
+    if (t === 'two' && ot) {
+      const ax = ot.pos.x - sx, az = ot.pos.y - sz, span = Math.hypot(ax, az) || 1, mx = sx + ax / 2, mz = sz + az / 2;
+      let nx = -az / span, nz = ax / span; if (nz < 0) { nx = -nx; nz = -nz; } // normal to the pair, house side
+      const dist = clamp(span * 1.25 + 3.4, 4.2, 7.5);
+      let px = mx + nx * dist, pz = mz + nz * dist;
+      pz = clamp(pz, 3.2, 7); px = clamp(px, -5.5, 5.5);
+      if (inObstacle(px, 1.6, pz, 0.3)) pz = 6.4;
+      gp.set(px, 1.65, pz); gl.set(mx, 1.2, mz); gFov = fovFor((span + 1.6) / (0.7 * (camera.aspect || 1.6)) , Math.hypot(px - mx, pz - mz)); return;
+    }
+    // close-up: ~30 degrees off the speaker's facing, house side, outside props
+    const f = sp.yaw, d0 = 2.9;
+    let best = null;
+    for (const da of [0.52, -0.52, 0.95, -0.95, 1.4, -1.4, 0]) {
+      const a = f + da, px = sx + Math.sin(a) * d0, pz = sz + Math.cos(a) * d0;
+      if (pz < 1.2 || pz > 6.4 || Math.abs(px) > 6.3) continue;
+      if (inObstacle(px, 1.6, pz, 0.35)) continue;
+      best = { px, pz }; if (pz >= 3.0 || da === 0) break; // prefer positions in front of the proscenium so nothing sits between lens and face
+    }
+    if (!best || best.pz < 1.2) { const pz = clamp(sz + 3.4, 3.2, 6.4); best = { px: clamp(sx * 0.9, -5, 5), pz }; }
+    gp.set(best.px, 1.6, best.pz); gl.set(sx, 1.28, sz); gFov = fovFor(2.7, Math.hypot(best.px - sx, best.pz - sz));
+    if (ot) { gl.x = sx + (ot.pos.x - sx) * 0.12; gl.z = sz + (ot.pos.y - sz) * 0.12; }
+  }
   const camTarget = new THREE.Vector3(), lookTarget = new THREE.Vector3().copy(HOME.look), tmp = new THREE.Vector3(), mid = new THREE.Vector3();
   let wantFov = HOME.fov;
   spot.target.position.set(0, 0, 0);
@@ -208,7 +251,23 @@ export function createTheater(canvas) {
   return {
     renderer, scene, camera, curtain, sets,
     audienceTarget: new THREE.Vector3(0, 1.6, 11),
-    setView(v) { view = v; controls.enabled = v === 'free'; if (v === 'free') controls.target.copy(lookTarget); },
+    setView(v) { view = v; controls.enabled = v === 'free'; if (v === 'free') controls.target.copy(lookTarget); snap = true; },
+    /** beat-boundary cue from the Director: pick/refresh the auto shot. speaker/listener are live Actor objects. */
+    cue({ type = 'beat', speaker = null, listener = null, intensity = 0.5, emotion = 'neutral', entrance = false, close = false, beatNo = 0 } = {}) {
+      cam.lastSpeaker = speaker || cam.lastSpeaker; cam.lastListener = listener;
+      let want = 'ots';
+      if (type === 'finish' || entrance || !speaker) want = 'wide';
+      else if (cam.sinceWide >= 3 + (beatNo % 2)) want = 'wide';
+      else if (close || intensity >= 0.75 || emotion === 'gasp' || emotion === 'afraid') want = 'close';
+      else if (listener && Math.hypot(speaker.pos.x - listener.pos.x, speaker.pos.y - listener.pos.y) < 4 && beatNo % 3 === 0) want = 'two';
+      if (want === 'two' && !listener) want = 'ots';
+      if (time - cam.since < HOLD && type !== 'finish') want = cam.type === 'two' && !listener ? 'ots' : cam.type; // min hold: keep the shot, just follow the new speaker
+      if (want !== cam.type) { cam.type = want; cam.since = time; snap = true; }
+      cam.sinceWide = want === 'wide' ? 0 : cam.sinceWide + 1;
+      cam.subj = speaker; cam.other = listener;
+      cam.forced = null; return want;
+    },
+    get shotType() { return view === 'auto' ? cam.type : view; },
     get view() { return view; },
     setFocus(p, color, intensity = 1) {
       if (p) focus.copy(p);
@@ -242,30 +301,31 @@ export function createTheater(canvas) {
       applause = Math.max(0, applause - dt);
       for (const n of npcs) animPerson(n, n.head, n.arms, n.g, n.baseY, dt, 0.5);
       animPerson(pNpc, pHead, pArms, player, ps.y + 0.55, dt, 0.35);
+      const pov = view !== 'free' && view !== 'audience' && cam.type === 'ots'; // the avatar's own pointer would sit in the lens
+      marker.visible = halo.visible = ring.visible = !pov;
       marker.position.y = 1.35 + Math.sin(time * 3) * 0.06; marker.rotation.y = time * 2.2;
       halo.scale.setScalar(1 + Math.sin(time * 3) * 0.12);
       ring.material.opacity = 0.4 + Math.sin(time * 3) * 0.25;
       // camera
-      let fovGoal = HOME.fov;
       if (view === 'audience') {
         camTarget.copy(HOME.pos); camTarget.x += focus.x * 0.05;
         camera.position.lerp(camTarget, 1 - Math.exp(-3 * dt));
         lookTarget.lerp(tmp.set(HOME.look.x + focus.x * 0.1, HOME.look.y, HOME.look.z), 1 - Math.exp(-3 * dt));
+        camera.lookAt(lookTarget); gFov = HOME.fov;
+      } else if (view === 'free') controls.update();
+      else {
+        // auto (planner-driven) or manual close: same solver, forced to a close-up of the current speaker
+        if (view === 'close') { const sp = cam.subj || cam.lastSpeaker; if (sp) { cam.subj = sp; cam.type = cam.type === 'two' ? 'two' : 'close'; } }
+        solveShot();
+        if (snap) { camera.position.copy(gp); lookTarget.copy(gl); camera.fov = gFov; camera.updateProjectionMatrix(); snap = false; }
+        else {
+          const k = 1 - Math.exp(-6 * dt);
+          camera.position.lerp(gp, k); lookTarget.lerp(gl, 1 - Math.exp(-9 * dt));
+          if (Math.abs(camera.fov - gFov) > 0.05) { camera.fov = lerp(camera.fov, gFov, 1 - Math.exp(-6 * dt)); camera.updateProjectionMatrix(); }
+        }
         camera.lookAt(lookTarget);
-      } else if (view === 'close') {
-        // theatrical framing: head-to-knees on the speaker, or a two-shot with the nearest listener
-        const sp = shot[0] || focus;
-        let other = null, best = 4.8;
-        for (let i = 1; i < shot.length; i++) { const d = Math.hypot(shot[i].x - sp.x, shot[i].z - sp.z); if (d < best) { best = d; other = shot[i]; } }
-        let dist, aimY, camY;
-        if (other) { mid.set((sp.x + other.x) / 2, 0, (sp.z + other.z) / 2); dist = clamp(best * 1.25 + 3.2, 4.4, 8.5); aimY = 1.2; camY = 1.6; fovGoal = 40; }
-        else { mid.set(sp.x, 0, sp.z); dist = 3.6; aimY = 1.15; camY = 1.45; fovGoal = 38; }
-        camTarget.set(clamp(mid.x * 0.9 + (other ? 0 : (sp.x > 0 ? -0.5 : 0.5)), -4.5, 4.5), camY, Math.min(mid.z + dist, 6.4));
-        camera.position.lerp(camTarget, 1 - Math.exp(-2.6 * dt));
-        lookTarget.lerp(tmp.set(mid.x, aimY, mid.z), 1 - Math.exp(-4 * dt));
-        camera.lookAt(lookTarget);
-      } else controls.update();
-      if (Math.abs(camera.fov - fovGoal) > 0.05 && view !== 'free') { camera.fov = lerp(camera.fov, fovGoal, 1 - Math.exp(-3 * dt)); camera.updateProjectionMatrix(); }
+      }
+      if (view === 'audience' && Math.abs(camera.fov - gFov) > 0.05) { camera.fov = lerp(camera.fov, gFov, 1 - Math.exp(-3 * dt)); camera.updateProjectionMatrix(); }
       renderer.render(scene, camera);
     },
   };

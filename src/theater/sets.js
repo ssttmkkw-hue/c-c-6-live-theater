@@ -9,19 +9,22 @@ export const SET_LABEL = {
   en: { moon: 'Moonlit stage', ramparts: 'Castle ramparts', shop: 'Midnight shop', alley: 'Rainy alley', hall: 'Throne hall' },
 };
 
-// Order matters: first match wins. Text (idea / script) is tested first, actor names second.
+// Scored matching: every rule counts its hits; text beats names (x2). Ties fall to the earlier rule.
 const RULES = [
-  ['ramparts', /hamlet|哈姆雷特|elsinore|rampart|battlement|castle|城堡|城墙|露台|ghost|specter|spectre|鬼魂|幽灵|亡魂|守卫|guard|sentinel/i],
-  ['shop', /便利店|商店|超市|柜台|店员|收银|shop|store|counter|cashier|convenience|robot|机器人|老k|\bkay\b/i],
-  ['alley', /detective|侦探|警探|thief|小偷|盗贼|alley|小巷|街|police|inspector|noir/i],
-  ['hall', /king|queen|jester|throne|court|palace|emperor|王|小丑|弄臣|宫|朝堂|皇/i],
+  ['ramparts', /hamlet|哈姆雷特|elsinore|rampart|battlement|castle|城堡|城墙|露台|ghost|specter|spectre|鬼魂|幽灵|亡魂|守卫|\bguard|sentinel/gi],
+  ['shop', /便利店|商店|超市|柜台|店员|收银|\bshop|\bstore\b|counter|cashier|convenience|robot|机器人|老k|\bkay\b/gi],
+  ['alley', /detective|侦探|警探|thief|小偷|盗贼|alley|小巷|街头|街道|\bstreet|police|inspector|noir/gi],
+  ['hall', /\bking|\bqueen|jester|throne|\bcourt\b|palace|emperor|国王|王后|王座|王子|公主|小丑|弄臣|宫|朝堂|皇/gi],
 ];
+const hits = (re, s) => (s.match(re) || []).length;
 export function pickSet(text = '', names = []) {
-  for (const hay of [text, names.join(' ')]) {
-    if (!hay) continue;
-    for (const [id, re] of RULES) if (re.test(hay)) return id;
+  const nm = names.join(' ');
+  let best = null, bestScore = 0;
+  for (const [id, re] of RULES) {
+    const sc = hits(re, text) * 2 + hits(re, nm);
+    if (sc > bestScore) { best = id; bestScore = sc; }
   }
-  return null;
+  return best;
 }
 
 const rng = seed => { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; };
@@ -107,7 +110,7 @@ const cyl = (g, rt, rb, h, seg, m, x, y, z) => { const b = new THREE.Mesh(new TH
 
 // ---------------- 3D props ----------------
 const PROPS = {
-  moon() { return { group: new THREE.Group(), tick() {} }; },
+  moon() { return { group: new THREE.Group(), tick() {}, obstacles: [] }; },
   ramparts() {
     const g = new THREE.Group(), stone = std('#5a5662'), dk = std('#46424f'), flames = [];
     bx(g, 13.2, 1.15, 0.7, stone, 0, 0.57, -3.95);
@@ -119,7 +122,7 @@ const PROPS = {
       cyl(g, 0.12, 0.07, 0.2, 8, std('#3a2a18'), s * 4.8, 1.55, -3.4);
       const f = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.4, 7), glow('#ff9a3a', 2)); f.position.set(s * 4.8, 1.85, -3.4); g.add(f); flames.push(f);
     }
-    return { group: g, tick(t) { flames.forEach((f, i) => { f.scale.set(1 + Math.sin(t * 13 + i) * 0.12, 1 + Math.sin(t * 9 + i * 2) * 0.22, 1); }); } };
+    return { group: g, obstacles: [{ x0: 5.6, x1: 7, z0: -3.9, z1: -2.7, h: 3.4 }, { x0: -7, x1: -5.6, z0: -3.9, z1: -2.7, h: 3.4 }], tick(t) { flames.forEach((f, i) => { f.scale.set(1 + Math.sin(t * 13 + i) * 0.12, 1 + Math.sin(t * 9 + i * 2) * 0.22, 1); }); } };
   },
   shop() {
     const g = new THREE.Group(), wall = std('#d6d0bd'), top = std('#33393f'), shelfM = std('#aab0b4');
@@ -130,7 +133,7 @@ const PROPS = {
     for (let r = 0; r < 4; r++) { bx(g, 2.6, 0.05, 0.6, std('#8a9094'), 3.3, 0.35 + r * 0.55, -3.75); for (let i = 0; i < 8; i++) bx(g, 0.22, 0.3, 0.2, std(['#e74c3c', '#f1c40f', '#3498db', '#2ecc71', '#ecf0f1', '#e67e22'][(i + r) % 6]), 2.35 + i * 0.3, 0.5 + r * 0.55, -3.7); }
     bx(g, 1.1, 2.3, 0.7, std('#cfe3ea'), 5.6, 1.15, -3.5); bx(g, 0.9, 2.0, 0.04, glow('#bfefff', 0.8), 5.6, 1.15, -3.13); // fridge
     bx(g, 3.6, 0.1, 0.4, glow('#f4fbff', 1.6), 0, 6.35, -2.4); // fluorescent tube
-    return { group: g, tick() {} };
+    return { group: g, obstacles: [{ x0: -4.95, x1: -1.45, z0: -3.2, z1: -2.2, h: 1.4 }, { x0: 2.0, x1: 4.6, z0: -4.2, z1: -3.4, h: 2.2 }, { x0: 5.05, x1: 6.15, z0: -3.85, z1: -3.1, h: 2.3 }], tick() {} };
   },
   alley() {
     const g = new THREE.Group(), brick = std('#4a2f2c'), metal = std('#3c4650');
@@ -139,7 +142,7 @@ const PROPS = {
     cyl(g, 0.06, 0.08, 4.2, 8, std('#22262a'), -3.4, 2.1, -3.6); bx(g, 0.7, 0.1, 0.1, std('#22262a'), -3.1, 4.15, -3.6);
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), glow('#ffd88a', 2.2)); lamp.position.set(-2.8, 4.0, -3.6); g.add(lamp);
     bx(g, 13, 0.8, 0.5, brick, 0, 0.4, -4.1); // low wall along the back
-    return { group: g, tick(t) { lamp.material.emissiveIntensity = 2 + Math.sin(t * 21) * 0.2 + Math.sin(t * 7.3) * 0.2; } };
+    return { group: g, obstacles: [{ x0: -5.5, x1: -4.5, z0: -3.5, z1: -2.5, h: 1.6 }, { x0: 4.8, x1: 5.6, z0: -3.5, z1: -2.7, h: 1.0 }, { x0: -3.5, x1: -3.3, z0: -3.7, z1: -3.5, h: 4.2 }], tick(t) { lamp.material.emissiveIntensity = 2 + Math.sin(t * 21) * 0.2 + Math.sin(t * 7.3) * 0.2; } };
   },
   hall() {
     const g = new THREE.Group(), gold = std('#c9962f', { metalness: 0.6, roughness: 0.4 }), red = std('#7a1424');
@@ -147,7 +150,7 @@ const PROPS = {
     bx(g, 2.6, 0.5, 1.6, std('#5a3a24'), 0, 0.25, -3.2); // dais
     bx(g, 1.0, 0.5, 0.9, red, 0, 0.75, -3.2); bx(g, 1.1, 2.4, 0.2, red, 0, 1.7, -3.8); bx(g, 1.3, 0.2, 0.3, gold, 0, 3.0, -3.8);
     for (const s of [-1, 1]) { bx(g, 0.18, 0.9, 0.9, gold, s * 0.65, 1.0, -3.2); }
-    return { group: g, tick() {} };
+    return { group: g, obstacles: [{ x0: 3.8, x1: 4.8, z0: -4.3, z1: -3.3, h: 6.4 }, { x0: -4.8, x1: -3.8, z0: -4.3, z1: -3.3, h: 6.4 }], tick() {} };
   },
 };
 
@@ -158,18 +161,22 @@ export function createSets(scene, stageGroup) {
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(13.8, 7.4), floorMat); floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0.012, -0.7); floor.receiveShadow = true; floor.visible = false; stageGroup.add(floor);
   const cache = {}; let cur = 'moon', active = null;
   const texCache = { back: { moon: backMat.map }, floor: {} };
+  // build a set's textures + props without showing it (called from idle time so the first beat never pays for it)
+  function warm(id) {
+    texCache.back[id] ??= BACK[id]();
+    if (FLOOR[id]) texCache.floor[id] ??= (() => { const t = FLOOR[id](); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(id === 'shop' ? 6 : 3, id === 'shop' ? 3 : 2); return t; })();
+    cache[id] ??= (() => { const p = PROPS[id](); p.group.visible = false; scene.add(p.group); return p; })();
+  }
   function show(id) {
     if (!SET_IDS.includes(id)) id = 'moon';
     if (id === cur && active) return cur;
-    texCache.back[id] ??= BACK[id]();
+    warm(id);
     backMat.map = texCache.back[id]; backMat.needsUpdate = true;
-    if (FLOOR[id]) { texCache.floor[id] ??= (() => { const t = FLOOR[id](); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(id === 'shop' ? 6 : 3, id === 'shop' ? 3 : 2); return t; })(); floorMat.map = texCache.floor[id]; floorMat.needsUpdate = true; floor.visible = true; }
-    else floor.visible = false;
+    if (FLOOR[id]) { floorMat.map = texCache.floor[id]; floorMat.needsUpdate = true; floor.visible = true; } else floor.visible = false;
     if (active) active.group.visible = false;
-    cache[id] ??= (() => { const p = PROPS[id](); scene.add(p.group); return p; })();
     active = cache[id]; active.group.visible = true; cur = id;
     return cur;
   }
   show('moon');
-  return { show, get current() { return cur; }, tick(t) { active?.tick(t); } };
+  return { show, warm, get current() { return cur; }, get obstacles() { return active?.obstacles || []; }, tick(t) { active?.tick(t); } };
 }

@@ -110,6 +110,42 @@ export function altEnding(a, b, lang, variant = 0) {
   }));
 }
 
+// ---------- variety: seeded business beats + small variations (the FIRST beat is never touched) ----------
+const mulberry = seed => { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+const BUSINESS = {
+  zh: [
+    ['{X}来回踱了两步，若有所思', 'think', 'contemplative', 'stay'], ['{X}望向台下观众，耸了耸肩', 'shrug', 'neutral', 'stay'],
+    ['{X}深吸一口气，稳住情绪', 'talk', 'contemplative', 'stay'], ['{X}忍不住笑了一下', 'laugh', 'happy', 'stay'],
+    ['{X}别过脸去，退开半步', 'sad', 'sad', 'away:{Y}'], ['{X}向{Y}走近一步', 'talk', 'neutral', 'toward:{Y}'],
+  ],
+  en: [
+    ['{X} paces a step, thinking', 'think', 'contemplative', 'stay'], ['{X} glances at the audience and shrugs', 'shrug', 'neutral', 'stay'],
+    ['{X} takes a steadying breath', 'talk', 'contemplative', 'stay'], ['{X} lets out a nervous laugh', 'laugh', 'happy', 'stay'],
+    ['{X} turns away, one step back', 'sad', 'sad', 'away:{Y}'], ['{X} steps closer to {Y}', 'talk', 'neutral', 'toward:{Y}'],
+  ],
+};
+export function varyBeats(beats, cast, lang, seed) {
+  const rnd = mulberry(seed ?? ((Date.now() ^ (Math.random() * 1e9)) | 0)), out = [];
+  const pool = BUSINESS[lang === 'zh' ? 'zh' : 'en'];
+  let used = 0, lastBiz = -9;
+  beats.forEach((b, i) => {
+    let nb = b;
+    if (i > 0 && !b.ending) {
+      nb = { ...b };
+      if (nb.gesture === 'talk' && rnd() < 0.3) nb.gesture = ['point', 'shrug', 'think'][Math.floor(rnd() * 3)];
+      if (nb.move === 'stay' && rnd() < 0.18) nb.move = rnd() < 0.5 ? 'center' : 'upstage';
+      nb.intensity = Math.max(0.1, Math.min(1, (nb.intensity ?? 0.5) + (rnd() - 0.5) * 0.2));
+    }
+    if (i >= 2 && !b.ending && used < 3 && i - lastBiz >= 3 && rnd() < 0.45) {
+      const [t, g, e, mv] = pool[Math.floor(rnd() * pool.length)], x = b.who, y = x === cast[0] ? cast[1] : cast[0];
+      out.push({ who: x, line: '', direction: t.replace(/\{X\}/g, x).replace(/\{Y\}/g, y), emotion: e, gesture: g, move: mv.replace(/\{Y\}/g, y), intensity: 0.45, hold: 1500, business: true });
+      used++; lastBiz = i;
+    }
+    out.push(nb);
+  });
+  return out;
+}
+
 // ---------- the generator ----------
 export async function* parseLocal(input, opts = {}) {
   const delay = opts.delayMs || 0;
@@ -142,6 +178,7 @@ export async function* parseLocal(input, opts = {}) {
 
   if (!isScript) {
     const scene = ideaToScene(text);
+    if (opts.vary !== false) scene.beats = varyBeats(scene.beats, scene.cast, scene.lang === 'zh-CN' ? 'zh' : 'en', opts.seed);
     for (const n of scene.cast) yield declare(n);
     let first = true;
     for (let i = 0; i < scene.beats.length; i++) {
@@ -152,6 +189,7 @@ export async function* parseLocal(input, opts = {}) {
         lookAt: s.move && s.move.startsWith('away') ? other : other,
         intensity: s.intensity ?? inferIntensity(s.line, s.emotion), lang: scene.lang,
         pause: 350, ending: s.ending,
+        ...(s.business ? { hold: s.hold, direction: s.direction, pause: 250 } : {}),
       };
       if (!first && delay) await sleep(delay); else if (!first) await 0;
       first = false;

@@ -31,9 +31,16 @@ export const speech = {
       u.lang = lang; u.pitch = Math.max(0.1, Math.min(2, pitch)); u.rate = Math.max(0.5, Math.min(2, rate)); u.volume = volume;
       const v = this.pickVoice(lang, voiceIndex); if (v) u.voice = v;
       u.onstart = () => cb.onstart?.(); u.onend = () => cb.onend?.(); u.onerror = () => cb.onend?.();
+      if (cb.onboundary) u.onboundary = e => { if (e.name && e.name !== 'word') return; cb.onboundary(e.charIndex || 0, e.charLength || 0); };
       synth.speak(u);
       return true;
     } catch { return false; }
+  },
+  /** word start offsets (for the word clock / subtitles). CJK: every character is a "word"; Latin: whitespace-separated. */
+  words(text) {
+    const out = []; const re = /[㐀-鿿]|[^\s㐀-鿿]+/g; let m;
+    while ((m = re.exec(text))) out.push({ i: m.index, len: m[0].length });
+    return out;
   },
   cancel() { try { synth?.cancel(); } catch { /* ignore */ } },
   pause() { try { synth?.pause(); } catch { /* ignore */ } },
