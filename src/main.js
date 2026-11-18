@@ -5,16 +5,20 @@ import { samples } from './samples.js';
 import { pickParser, parsers } from './parsers/index.js';
 import { KEY_STORAGE, MODEL_STORAGE } from './parsers/ai.js';
 import { speech } from './speech.js';
+import { SET_LABEL } from './theater/sets.js';
 
 const $ = id => document.getElementById(id);
 const els = {
   script: $('script'), start: $('startBtn'), pause: $('pauseBtn'), stop: $('stopBtn'), replay: $('replayBtn'),
   status: $('status'), ttfl: $('ttfl'), tfb: $('tfb'), directIn: $('directIn'), directBtn: $('directBtn'),
   directLog: $('directLog'), beatLog: $('beatLog'), sub: $('subtitle'), subDir: $('subDir'), subName: $('subName'), subText: $('subText'),
-  toast: $('toast'), slow: $('slowParse'), mute: $('muteChk'), parserSel: $('parserSel'), key: $('apiKey'), model: $('aiModel'),
+  toast: $('toast'), setName: $('setName'), slow: $('slowParse'), mute: $('muteChk'), parserSel: $('parserSel'), key: $('apiKey'), model: $('aiModel'),
 };
 
 const theater = createTheater($('stage'));
+let lastSet = 'moon';
+const showSet = () => { els.setName.textContent = SET_LABEL[getLang()][lastSet] || '—'; };
+function refreshStartLabel() { els.start.textContent = t(document.body.classList.contains('live') ? 'restart' : 'start'); }
 let lastStatus = ['stIdle'];
 const setStatus = (key, ...a) => { lastStatus = [key, ...a]; els.status.textContent = t(key, ...a); };
 let toastTimer = 0;
@@ -34,6 +38,7 @@ const director = new Director(theater, {
     els.subDir.textContent = s.text && s.direction ? `（${s.direction}）` : '';
     els.sub.classList.add('on');
   },
+  onSet: id => { lastSet = id; showSet(); },
   onBeatQueued: (b, injected) => addBeatRow(b, injected),
   onBeatsDropped: ids => ids.forEach(id => els.beatLog.querySelector(`li[data-id="${id}"]`)?.remove()),
   onBeat: (b, n) => {
@@ -44,6 +49,7 @@ const director = new Director(theater, {
   onRunning: (running, finished) => {
     els.pause.disabled = !running; els.stop.disabled = !running && !finished;
     els.replay.disabled = false; els.start.disabled = false;
+    document.body.classList.toggle('live', !!running); refreshStartLabel();
     if (!running) els.pause.textContent = t('pause');
   },
   onPaused: p => { els.pause.textContent = t(p ? 'resume' : 'pause'); },
@@ -55,9 +61,15 @@ function addBeatRow(b, injected) {
   if (injected) li.classList.add('inj');
   const who = document.createElement('b'); who.textContent = b.speaker || '·';
   const txt = document.createElement('span'); txt.textContent = b.line || (b.direction ? `（${b.direction}）` : '');
-  const tag = document.createElement('i'); tag.textContent = `${b.emotion}/${b.gesture}`;
+  const tag = document.createElement('i'); tag.dataset.e = b.emotion; tag.dataset.g = b.gesture; fillTag(tag);
   li.append(who, txt, tag);
   if (injected && els.beatLog.querySelector('li.now')) els.beatLog.querySelector('li.now').after(li); else els.beatLog.append(li);
+}
+function fillTag(tag) {
+  tag.textContent = '';
+  const e = document.createElement('span'); e.className = 'e e-' + tag.dataset.e; e.textContent = t('emo')[tag.dataset.e] || tag.dataset.e;
+  const g = document.createElement('span'); g.textContent = t('gest')[tag.dataset.g] || tag.dataset.g;
+  tag.append(e, g);
 }
 function logDirective(msg) {
   const d = document.createElement('div'); d.textContent = '▸ ' + msg; els.directLog.prepend(d);
@@ -95,7 +107,7 @@ function startShow() {
   const text = els.script.value.trim();
   if (!text) { toast(t('noScript')); return; }
   els.beatLog.textContent = ''; els.ttfl.textContent = '— ms'; els.tfb.textContent = '— ms'; els.directLog.textContent = '';
-  els.start.disabled = false; els.pause.disabled = false; els.stop.disabled = false; els.pause.textContent = t('pause');
+  els.start.disabled = false; els.pause.disabled = false; els.stop.disabled = false; els.pause.textContent = t('pause'); document.body.classList.add('live'); refreshStartLabel();
   const parser = pickParser(els.parserSel.value);
   director.start(text, parser, { delayMs: els.slow.checked ? 450 : 0 });
 }
@@ -143,8 +155,8 @@ $('keyClear').onclick = () => { localStorage.removeItem(KEY_STORAGE); els.key.va
 
 // language
 $('langBtn').onclick = () => setLang(getLang() === 'zh' ? 'en' : 'zh');
-onLang(() => { renderSamples(); renderViews(); renderParsers(); els.status.textContent = t(...lastStatus); els.pause.textContent = t(director.paused ? 'resume' : 'pause'); });
-applyStatic(); renderSamples(); renderViews(); renderParsers();
+onLang(() => { showSet(); refreshStartLabel(); els.beatLog.querySelectorAll('li i').forEach(fillTag); renderSamples(); renderViews(); renderParsers(); els.status.textContent = t(...lastStatus); els.pause.textContent = t(director.paused ? 'resume' : 'pause'); });
+applyStatic(); refreshStartLabel(); showSet(); renderSamples(); renderViews(); renderParsers();
 els.script.value = samples[0].text[getLang()];
 setStatus('stIdle');
 

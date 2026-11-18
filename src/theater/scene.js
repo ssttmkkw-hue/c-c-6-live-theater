@@ -1,6 +1,7 @@
 // The theater: stage, proscenium, curtains, wings, lights, audience seating, player avatar, cameras.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { createSets } from './sets.js';
 
 const M = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.02, ...o });
 const box = (w, h, d, m, x, y, z, shadow = true) => {
@@ -9,19 +10,8 @@ const box = (w, h, d, m, x, y, z, shadow = true) => {
 };
 const lerp = (a, b, t) => a + (b - a) * t;
 
-function backdropTexture() {
-  const c = document.createElement('canvas'); c.width = 512; c.height = 256;
-  const g = c.getContext('2d');
-  const gr = g.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, '#0b1230'); gr.addColorStop(0.7, '#3a2a5c'); gr.addColorStop(1, '#6b3b57');
-  g.fillStyle = gr; g.fillRect(0, 0, 512, 256);
-  let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-  g.fillStyle = '#fff'; for (let i = 0; i < 90; i++) { g.globalAlpha = 0.3 + rnd() * 0.7; g.fillRect(rnd() * 512, rnd() * 150, 1.5, 1.5); }
-  g.globalAlpha = 1; g.fillStyle = '#f5e9b8'; g.beginPath(); g.arc(380, 60, 26, 0, 7); g.fill();
-  g.fillStyle = '#0b1230'; g.beginPath(); g.arc(392, 54, 24, 0, 7); g.fill();
-  g.fillStyle = '#1a1030'; g.beginPath(); g.moveTo(0, 256); for (let x = 0; x <= 512; x += 32) g.lineTo(x, 190 - Math.sin(x * 0.03) * 25 - rnd() * 18); g.lineTo(512, 256); g.fill();
-  g.fillStyle = '#120a22'; g.beginPath(); g.moveTo(0, 256); for (let x = 0; x <= 512; x += 24) g.lineTo(x, 225 - rnd() * 22); g.lineTo(512, 256); g.fill();
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-}
+const angDiff = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 export function createTheater(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -31,7 +21,8 @@ export function createTheater(canvas) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#07040a'); scene.fog = new THREE.Fog('#07040a', 28, 60);
   const camera = new THREE.PerspectiveCamera(46, 1.6, 0.1, 120);
-  const HOME = { pos: new THREE.Vector3(0, 3.7, 13.9), look: new THREE.Vector3(0, 1.3, -1) };
+  // just behind & above the back row so the gold avatar is a foreground figure watching the stage
+  const HOME = { pos: new THREE.Vector3(0, 4.9, 18.2), look: new THREE.Vector3(0, 0.55, -1), fov: 46 };
   camera.position.copy(HOME.pos); camera.lookAt(HOME.look);
   const controls = new OrbitControls(camera, canvas);
   controls.target.copy(HOME.look); controls.enabled = false; controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 3; controls.maxDistance = 30;
@@ -44,8 +35,7 @@ export function createTheater(canvas) {
   stage.add(box(60, 0.2, 40, M('#2a0d16'), 0, -1.0, 15)); // hall carpet
   // back wall + painted backdrop
   stage.add(box(16, 9, 0.3, M('#15101c'), 0, 4.5, -4.7));
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(13.6, 6.8), new THREE.MeshBasicMaterial({ map: backdropTexture() }));
-  back.position.set(0, 3.5, -4.5); stage.add(back);
+  const sets = createSets(scene, stage); // painted backdrop + floor + props, swapped per show
   // side flats (wings) + masking legs
   const black = M('#0b0810');
   for (const s of [-1, 1]) {
@@ -107,36 +97,78 @@ export function createTheater(canvas) {
       scene.add(g); seats.push({ x, y, z, r, i });
     }
   }
-  // NPC audience (dim silhouettes that sway & clap)
+  // NPC audience: varied silhouettes (hair, hats, heights, colours) that turn toward the speaker, react, and clap
   const npcs = [];
-  const PLAYER = { r: 5, i: 0 };
+  const PLAYER = { r: 4, i: 0 };
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const SKINS = ['#f1c9a5', '#d9a47a', '#b9835a', '#8a5a3a', '#f4d6bd'], HAIRS = ['#1a1210', '#3a2616', '#6b4a22', '#a8782f', '#d9d2c4', '#7a2a1a', '#26304a'];
+  const shared = {
+    head: new THREE.SphereGeometry(0.17, 12, 10), body: new THREE.CapsuleGeometry(0.2, 0.3, 3, 8), arm: new THREE.CapsuleGeometry(0.05, 0.26, 3, 6),
+    cap: new THREE.SphereGeometry(0.185, 12, 9, 0, Math.PI * 2, 0, 2.2), big: new THREE.SphereGeometry(0.25, 10, 8), bun: new THREE.SphereGeometry(0.07, 8, 6),
+    back: new THREE.BoxGeometry(0.34, 0.4, 0.1), tail: new THREE.CapsuleGeometry(0.045, 0.28, 3, 6), brim: new THREE.BoxGeometry(0.3, 0.025, 0.18),
+    hatBrim: new THREE.CylinderGeometry(0.3, 0.3, 0.025, 14), hatTop: new THREE.CylinderGeometry(0.15, 0.17, 0.2, 12), beanie: new THREE.SphereGeometry(0.19, 10, 8, 0, Math.PI * 2, 0, 1.7),
+  };
+  function makePerson({ cloth, skin, hair, style, scale = 1, width = 1, capCol }) {
+    const g = new THREE.Group(), inner = new THREE.Group(); g.add(inner); inner.scale.set(width * scale, scale, width * scale);
+    const body = new THREE.Mesh(shared.body, M(cloth)); body.position.y = 0.2; inner.add(body);
+    const head = new THREE.Group(); head.position.y = 0.72; inner.add(head);
+    const hm = M(hair), sk = M(skin);
+    const hd = new THREE.Mesh(shared.head, sk); head.add(hd);
+    const add = (geo, m, x, y, z, rx = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.x = rx; head.add(o); return o; };
+    switch (style) {
+      case 0: add(shared.cap, hm, 0, 0.02, -0.02, -0.2); break;
+      case 1: add(shared.cap, hm, 0, 0.02, -0.02, -0.2); add(shared.bun, hm, 0, 0.21, -0.05); break;
+      case 2: add(shared.cap, hm, 0, 0.02, -0.02, -0.2); add(shared.back, hm, 0, -0.1, -0.12); break;
+      case 3: break; // bald
+      case 4: add(shared.cap, M(capCol), 0, 0.03, -0.02, -0.15); add(shared.brim, M(capCol), 0, 0.1, 0.2); break;
+      case 5: add(shared.hatBrim, M(capCol), 0, 0.16, 0); add(shared.hatTop, M(capCol), 0, 0.27, 0); break;
+      case 6: add(shared.big, hm, 0, 0.07, -0.04); break; // big curly hair
+      case 7: add(shared.cap, hm, 0, 0.02, -0.02, -0.2); add(shared.tail, hm, 0, -0.08, -0.2, 0.3); break;
+      default: add(shared.beanie, M(capCol), 0, 0.06, 0, -0.1);
+    }
+    const arms = [1, -1].map(sx => { const a = new THREE.Group(); a.position.set(sx * 0.23, 0.4, 0.02); const m = new THREE.Mesh(shared.arm, M(cloth)); m.position.y = -0.16; a.add(m); inner.add(a); return a; });
+    return { g, inner, head, arms };
+  }
   for (const s of seats) {
     if (s.r === PLAYER.r && s.i === PLAYER.i) continue;
-    if (rnd() < 0.42) continue;
-    const g = new THREE.Group(); g.position.set(s.x, s.y + 0.55, s.z);
-    const col = new THREE.Color().setHSL(rnd(), 0.35, 0.28);
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.3, 3, 8), M(col)); body.position.y = 0.2;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), M(new THREE.Color().setHSL(0.07, 0.3, 0.45 + rnd() * 0.2))); head.position.y = 0.72;
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8, 0, 7, 0, 2.2), M('#1a1210')); hair.position.y = 0.74; hair.rotation.x = -0.35;
-    g.add(body, head, hair); scene.add(g);
-    npcs.push({ g, head, ph: rnd() * 7, sp: 0.5 + rnd() });
+    if (rnd() < 0.38) continue;
+    if (s.r >= 3 && Math.abs(s.i) <= 1) continue; // (this also clears the player's own row) // keep a clear sightline so the gold avatar reads as a foreground figure
+    const kid = rnd() < 0.12;
+    const p = makePerson({
+      cloth: new THREE.Color().setHSL(rnd(), 0.35 + rnd() * 0.25, 0.3 + rnd() * 0.14), skin: SKINS[Math.floor(rnd() * 5)], hair: HAIRS[Math.floor(rnd() * HAIRS.length)],
+      style: Math.floor(rnd() * 9), scale: kid ? 0.78 : 0.92 + rnd() * 0.2, width: 0.9 + rnd() * 0.3, capCol: new THREE.Color().setHSL(rnd(), 0.5, 0.4),
+    });
+    p.g.position.set(s.x, s.y + 0.55, s.z); p.g.rotation.y = Math.PI; scene.add(p.g);
+    npcs.push({ ...p, x: s.x, z: s.z, baseY: s.y + 0.55, ph: rnd() * 7, sp: 0.5 + rnd(), attn: 0.4 + rnd() * 0.6, rx: rnd(), jolt: 0, lean: 0, clapSp: 11 + rnd() * 5 });
   }
-  // ---- player avatar: gold, with a marker ----
+  // ---- player avatar: gold body, red cap, floating arrow, glow ring — seen from behind, watching the stage ----
   const ps = seats.find(s => s.r === PLAYER.r && s.i === PLAYER.i);
-  const player = new THREE.Group(); player.position.set(ps.x, ps.y + 0.55, ps.z); scene.add(player);
-  const goldM = M('#f2c14e', { emissive: '#8a5a00', emissiveIntensity: 0.35, roughness: 0.5 });
-  const pBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.34, 4, 10), goldM); pBody.position.y = 0.2; pBody.castShadow = true;
-  const pHead = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 12), M('#ffe2bd')); pHead.position.y = 0.76; pHead.castShadow = true;
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10, 0, 7, 0, 1.7), M('#d62f4b')); cap.position.y = 0.78;
-  const marker = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.22, 4), new THREE.MeshBasicMaterial({ color: '#ffd24a' })); marker.rotation.x = Math.PI; marker.position.y = 1.4;
-  player.add(pBody, pHead, cap, marker);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.55, 28), new THREE.MeshBasicMaterial({ color: '#ffd24a', transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
+  const player = new THREE.Group(); player.position.set(ps.x, ps.y + 0.55, ps.z); player.rotation.y = Math.PI; scene.add(player);
+  const goldM = M('#f2c14e', { emissive: '#a86a00', emissiveIntensity: 0.7, roughness: 0.45 });
+  const pin = new THREE.Group(); pin.scale.setScalar(1.2); player.add(pin);
+  const pBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 0.34, 4, 10), goldM); pBody.position.y = 0.2; pBody.castShadow = true;
+  const pHead = new THREE.Group(); pHead.position.y = 0.76;
+  const pSkull = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 12), M('#ffe2bd', { emissive: '#5a4026', emissiveIntensity: 0.5 }));
+  const capM = M('#e0304f', { emissive: '#6a0f20', emissiveIntensity: 0.6 });
+  const pCap = new THREE.Mesh(new THREE.SphereGeometry(0.205, 14, 10, 0, Math.PI * 2, 0, 1.75), capM); pCap.position.y = 0.01; pCap.rotation.x = -0.15;
+  const pBrim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.2), capM); pBrim.position.set(0, 0.1, 0.2);
+  const pomp = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), M('#ffd24a', { emissive: '#aa7700', emissiveIntensity: 0.8 })); pomp.position.y = 0.22;
+  pHead.add(pSkull, pCap, pBrim, pomp);
+  const pArms = [1, -1].map(sx => { const a = new THREE.Group(); a.position.set(sx * 0.26, 0.4, 0.02); const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.28, 3, 6), goldM); m.position.y = -0.17; a.add(m); pin.add(a); return a; });
+  pin.add(pBody, pHead);
+  const marker = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.17, 4), new THREE.MeshBasicMaterial({ color: '#ffd24a' })); marker.rotation.x = Math.PI; marker.position.y = 1.35;
+  const halo = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.26, 24), new THREE.MeshBasicMaterial({ color: '#ffd24a', transparent: true, opacity: 0.8, side: THREE.DoubleSide })); halo.rotation.x = Math.PI / 2; halo.position.y = 1.18;
+  pin.add(marker, halo);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.64, 28), new THREE.MeshBasicMaterial({ color: '#ffd24a', transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
   ring.rotation.x = -Math.PI / 2; ring.position.set(ps.x, ps.y + 0.02, ps.z); scene.add(ring);
+  const pNpc = { ph: 1.3, sp: 0.8, attn: 0.9, rx: 0.1, jolt: 0, lean: 0, clapSp: 13 };
 
   // ---- state / API ----
   let view = 'audience', focus = new THREE.Vector3(0, 1.5, 0), spotColor = new THREE.Color('#fff1d0'), applause = 0, time = 0;
-  const camTarget = new THREE.Vector3(), lookTarget = new THREE.Vector3().copy(HOME.look), tmp = new THREE.Vector3();
+  let shot = []; // live world positions of the actors in frame: [speaker, ...others]
+  let mood = { emo: 'neutral', level: 0 };
+  const camTarget = new THREE.Vector3(), lookTarget = new THREE.Vector3().copy(HOME.look), tmp = new THREE.Vector3(), mid = new THREE.Vector3();
+  let wantFov = HOME.fov;
   spot.target.position.set(0, 0, 0);
 
   function resize() {
@@ -146,8 +178,35 @@ export function createTheater(canvas) {
   }
   new ResizeObserver(resize).observe(canvas); resize();
 
+  // Audience member / player animation shared by NPCs and the avatar
+  function animPerson(n, head, arms, root, baseY, dt, bodyLookScale) {
+    const dx = focus.x - (n.x ?? root.position.x), dz = focus.z - (n.z ?? root.position.z);
+    const want = clamp(angDiff(Math.PI, Math.atan2(dx, dz)), -0.7, 0.7) * n.attn;
+    head.rotation.y += (want - head.rotation.y) * (1 - Math.exp(-4 * dt));
+    root.rotation.y = Math.PI + head.rotation.y * bodyLookScale;
+    n.jolt = Math.max(0, n.jolt - dt * 2.2);
+    const lvl = mood.level, e = mood.emo;
+    let lean = 0.04 + 0.05 * lvl, headX = 0, bounce = 0;
+    if ((e === 'angry' || e === 'proud') && n.rx < 0.8) lean += 0.10 * lvl;
+    if (e === 'sad' && n.rx < 0.8) { headX = 0.28 * lvl; lean -= 0.02; }
+    if (e === 'happy' && n.rx < 0.75) bounce = Math.abs(Math.sin(time * 6 + n.ph)) * 0.05 * lvl;
+    if (e === 'tender' && n.rx < 0.6) head.rotation.z = Math.sin(time * 1.2 + n.ph) * 0.12 * lvl; else head.rotation.z = Math.sin(time * n.sp + n.ph) * 0.05;
+    lean -= n.jolt * 0.28; bounce += n.jolt * 0.1;
+    n.lean += (lean - n.lean) * (1 - Math.exp(-5 * dt));
+    root.children[0].rotation.x = n.lean + Math.sin(time * 1.3 + n.ph) * 0.012;
+    head.rotation.x = headX - n.jolt * 0.2;
+    const cl = applause > 0;
+    const c = 0.5 + 0.5 * Math.sin(time * n.clapSp + n.ph);
+    for (let k = 0; k < 2; k++) {
+      const sx = k === 0 ? 1 : -1;
+      if (cl) { arms[k].rotation.set(0, 0, sx * (2.75 - 0.5 * c)); arms[k].rotation.x = -0.3; }
+      else { arms[k].rotation.set(-0.15 * lvl, 0, sx * (0.12 + Math.sin(time * 0.8 + n.ph) * 0.03)); }
+    }
+    root.position.y = baseY + bounce + (cl ? Math.abs(Math.sin(time * 8 + n.ph)) * 0.05 : 0);
+  }
+
   return {
-    renderer, scene, camera, curtain,
+    renderer, scene, camera, curtain, sets,
     audienceTarget: new THREE.Vector3(0, 1.6, 11),
     setView(v) { view = v; controls.enabled = v === 'free'; if (v === 'free') controls.target.copy(lookTarget); },
     get view() { return view; },
@@ -156,10 +215,20 @@ export function createTheater(canvas) {
       if (color) spotColor.set(color);
       spot.intensity = 220 * intensity;
     },
+    /** live positions of the actors in frame ([speaker, ...others]) for the close-up / two-shot */
+    setShot(points) { shot = points; if (points[0]) focus.set(points[0].x, 1.5, points[0].z); },
+    setSet(id) { return sets.show(id); },
+    /** the house reacts: gasp → jolt, happy → bounce, sad → heads down, angry → lean in */
+    react(emo, intensity = 0.5) {
+      mood = { emo, level: 0.45 + intensity * 0.55 };
+      if (emo === 'gasp' || emo === 'afraid') { for (const n of npcs) if (n.rx < 0.55) n.jolt = 0.6 + Math.random() * 0.4; pNpc.jolt = 0.7; }
+    },
     openCurtain(open) { curtain.target = open ? 1 : 0; },
     applaud(sec) { applause = sec; },
     update(dt) {
       time += dt;
+      sets.tick(time);
+      mood.level = Math.max(0, mood.level - dt * 0.16);
       // curtain animation
       curtain.k = lerp(curtain.k, curtain.target, 1 - Math.exp(-1.6 * dt));
       const cs = 1 - curtain.k * 0.78; // panels bunch up against the outer edges
@@ -171,28 +240,32 @@ export function createTheater(canvas) {
       spot.color.lerp(spotColor, 1 - Math.exp(-3 * dt));
       // audience
       applause = Math.max(0, applause - dt);
-      for (const n of npcs) {
-        n.g.position.y += 0; n.head.rotation.z = Math.sin(time * n.sp + n.ph) * 0.06;
-        n.g.rotation.y = Math.sin(time * 0.3 + n.ph) * 0.12;
-        n.g.scale.y = 1 + (applause > 0 ? Math.abs(Math.sin(time * 9 + n.ph)) * 0.06 : Math.sin(time * 1.5 + n.ph) * 0.008);
-      }
-      marker.position.y = 1.4 + Math.sin(time * 3) * 0.06; marker.rotation.y = time * 2;
-      ring.material.opacity = 0.35 + Math.sin(time * 3) * 0.2;
-      player.rotation.y = lerp(player.rotation.y, THREE.MathUtils.clamp(-(focus.x - player.position.x) * 0.02, -0.25, 0.25), 0.05);
-      pHead.rotation.y = player.rotation.y * 0.5;
-      if (applause > 0) player.position.y = ps.y + 0.55 + Math.abs(Math.sin(time * 9)) * 0.05;
+      for (const n of npcs) animPerson(n, n.head, n.arms, n.g, n.baseY, dt, 0.5);
+      animPerson(pNpc, pHead, pArms, player, ps.y + 0.55, dt, 0.35);
+      marker.position.y = 1.35 + Math.sin(time * 3) * 0.06; marker.rotation.y = time * 2.2;
+      halo.scale.setScalar(1 + Math.sin(time * 3) * 0.12);
+      ring.material.opacity = 0.4 + Math.sin(time * 3) * 0.25;
       // camera
+      let fovGoal = HOME.fov;
       if (view === 'audience') {
-        camTarget.copy(HOME.pos); camTarget.x += focus.x * 0.04;
+        camTarget.copy(HOME.pos); camTarget.x += focus.x * 0.05;
         camera.position.lerp(camTarget, 1 - Math.exp(-3 * dt));
         lookTarget.lerp(tmp.set(HOME.look.x + focus.x * 0.1, HOME.look.y, HOME.look.z), 1 - Math.exp(-3 * dt));
         camera.lookAt(lookTarget);
       } else if (view === 'close') {
-        camTarget.set(focus.x * 0.8, 2.3, focus.z + 5.4);
-        camera.position.lerp(camTarget, 1 - Math.exp(-2.5 * dt));
-        lookTarget.lerp(tmp.set(focus.x, 1.4, focus.z), 1 - Math.exp(-4 * dt));
+        // theatrical framing: head-to-knees on the speaker, or a two-shot with the nearest listener
+        const sp = shot[0] || focus;
+        let other = null, best = 4.8;
+        for (let i = 1; i < shot.length; i++) { const d = Math.hypot(shot[i].x - sp.x, shot[i].z - sp.z); if (d < best) { best = d; other = shot[i]; } }
+        let dist, aimY, camY;
+        if (other) { mid.set((sp.x + other.x) / 2, 0, (sp.z + other.z) / 2); dist = clamp(best * 1.25 + 3.2, 4.4, 8.5); aimY = 1.2; camY = 1.6; fovGoal = 40; }
+        else { mid.set(sp.x, 0, sp.z); dist = 3.6; aimY = 1.15; camY = 1.45; fovGoal = 38; }
+        camTarget.set(clamp(mid.x * 0.9 + (other ? 0 : (sp.x > 0 ? -0.5 : 0.5)), -4.5, 4.5), camY, Math.min(mid.z + dist, 6.4));
+        camera.position.lerp(camTarget, 1 - Math.exp(-2.6 * dt));
+        lookTarget.lerp(tmp.set(mid.x, aimY, mid.z), 1 - Math.exp(-4 * dt));
         camera.lookAt(lookTarget);
       } else controls.update();
+      if (Math.abs(camera.fov - fovGoal) > 0.05 && view !== 'free') { camera.fov = lerp(camera.fov, fovGoal, 1 - Math.exp(-3 * dt)); camera.updateProjectionMatrix(); }
       renderer.render(scene, camera);
     },
   };

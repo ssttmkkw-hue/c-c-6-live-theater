@@ -4,6 +4,7 @@
 // applied to every beat when it is popped from the queue and (b) the currently performing actor.
 import * as THREE from 'three';
 import { Actor } from './theater/actor.js';
+import { pickSet } from './theater/sets.js';
 import { castFor, langOf } from './cast.js';
 import { speech } from './speech.js';
 import { parseDirective } from './directives.js';
@@ -25,7 +26,7 @@ export class Director {
     this.streamDone = true; this.style = newStyle(); this.seq = 0; this.beatNo = 0;
     this.skipEnding = false; this.pendingAlt = false; this.altVariant = 0; this.t0 = 0;
     this.firstLine = false; this.lastSpeakers = []; this.lang = 'zh-CN'; this.actorSpecs = [];
-    this.endedAt = 0;
+    this.endedAt = 0; this.setId = 'moon'; this.setExplicit = false;
   }
   status(key, ...a) { this.hooks.onStatus?.(key, ...a); }
 
@@ -39,6 +40,7 @@ export class Director {
     this.streamDone = false; this.state = 'parsing'; this.theater.openCurtain(true);
     this.status('stParsing'); this.hooks.onRunning?.(true);
     this.source = { text, parser, ctx };
+    this.chooseSet();
     let any = false;
     try {
       for await (const ev of parser.parse(text, { ...ctx, signal: this.abort?.signal })) {
@@ -57,12 +59,22 @@ export class Director {
     this.flushPendingAlt();
   }
 
+  /** Pick the set from the idea text / actor names unless a {kind:'scene'} event already chose one. */
+  chooseSet(force) {
+    if (force) { this.setExplicit = true; } else if (this.setExplicit) return;
+    const names = [...this.actors.values()].map(a => a.name);
+    const id = force || pickSet(this.source?.text || '', names) || 'moon';
+    if (id === this.setId) return;
+    this.setId = this.theater.setSet(id); this.hooks.onSet?.(this.setId);
+  }
+
   /** Replay what was performed (plus whatever was still queued). */
   replay() {
     const specs = this.actorSpecs.slice();
     const beats = [...this.performed, ...this.queue].map(b => ({ ...b }));
     if (!beats.length) return;
-    const parser = { id: 'local', parse: async function* () { for (const a of specs) yield { kind: 'actor', ...a }; for (const b of beats) { yield { kind: 'beat', beat: b }; await 0; } yield { kind: 'end' }; } };
+    const setId = this.setId;
+    const parser = { id: 'local', parse: async function* () { if (setId && setId !== 'moon') yield { kind: 'scene', set: setId }; for (const a of specs) yield { kind: 'actor', ...a }; for (const b of beats) { yield { kind: 'beat', beat: b }; await 0; } yield { kind: 'end' }; } };
     return this.start('', parser, {});
   }
 
@@ -71,7 +83,7 @@ export class Director {
     this.queue = []; this.cur = null; this.paused = false; this.style = newStyle();
     this.skipEnding = false; this.pendingAlt = false; this.beatNo = 0; this.endedAt = 0;
     for (const a of this.actors.values()) { this.theater.scene.remove(a.root); }
-    this.actors.clear(); this.lastSpeakers = [];
+    this.actors.clear(); this.lastSpeakers = []; this.setExplicit = false; this.source = null;
     if (!keepLog) { this.performed = []; this.actorSpecs = []; }
     this.hooks.onSubtitle?.(null); this.theater.applaud(0);
   }
@@ -87,6 +99,7 @@ export class Director {
   // ------------- ingest -------------
   ingest(ev) {
     if (ev.kind === 'actor') { this.declare(ev); return; }
+    if (ev.kind === 'scene') { if (ev.set || ev.name) this.chooseSet(ev.set || ev.name); return; }
     if (ev.kind === 'end') return;
     if (ev.kind !== 'beat' || !ev.beat) return;
     const b = { ...ev.beat, id: ++this.seq };
@@ -113,6 +126,7 @@ export class Director {
     this.theater.scene.add(a.root); this.actors.set(k, a); this.actorSpecs.push(full);
     a.enter(); // walks on from the wings (ghosts materialize) immediately
     this.hooks.onActor?.(a);
+    this.chooseSet();
     return a;
   }
   ensureActor(name) { return this.actors.get(name.toLowerCase()) || this.declare({ name }); }
@@ -128,6 +142,7 @@ export class Director {
     const actor = this.getActor(beat.speaker);
     const onstage = [...this.actors.values()].filter(a => a.onstage);
     if (actor && !actor.onstage) actor.enter();
+    if (beat.emotion && beat.emotion !== 'neutral') this.theater.react(beat.emotion, beat.intensity);
     // movement
     this.doMove(actor, beat);
     // look targets: everyone watches the speaker; the speaker looks at their target
@@ -178,7 +193,8 @@ export class Director {
     const mv = beat.move || 'stay';
     const clampP = (x, z) => [clamp(x, -5.6, 5.6), clamp(z, -3.3, 2.1)];
     if (mv.startsWith('enter:')) { for (const n of mv.slice(6).split('|')) { const a = this.getActor(n); if (a && !a.onstage) a.enter(); } return; }
-    if (!actor || mv === 'stay') return;
+    if (actor && mv === 'stay') { this.nudge(actor, beat); return; }
+    if (!actor) return;
     if (mv === 'enter') { if (!actor.onstage || actor.leaving) actor.enter(); return; }
     if (mv === 'exit') { actor.exit(); return; }
     const h = actor.home;
@@ -195,6 +211,22 @@ export class Director {
       if (toward && d < want + 0.2) return;
       actor.walkTo(...clampP(t.pos.x + dx * want, t.pos.y + dz * want));
     }
+  }
+
+  /** Don't plant the speaker like a statue: strong beats get a small, motivated step (in on anger, back on fear/sadness, a drift otherwise). */
+  nudge(actor, beat) {
+    if (!beat.line || !actor.onstage || actor.moving || actor.leaving || actor.ghost || actor.kneelState) return;
+    const strong = (beat.intensity ?? 0.5) >= 0.55, k = (beat.id || 0) % 3;
+    if (!strong && k !== 0) return;
+    const t = beat.lookAt && beat.lookAt !== 'audience' && beat.lookAt !== 'speaker' ? this.getActor(beat.lookAt) : (this.getActor(this.lastSpeakers.find(n => n !== actor.name)));
+    const clampP = (x, z) => [clamp(x, -5.4, 5.4), clamp(z, -3.2, 2.0)];
+    if (t && t !== actor) {
+      let dx = t.pos.x - actor.pos.x, dz = t.pos.y - actor.pos.y; const d = Math.hypot(dx, dz) || 1; dx /= d; dz /= d;
+      const back = beat.emotion === 'afraid' || beat.emotion === 'sad' || beat.emotion === 'gasp';
+      if (back && d < 5) actor.walkTo(...clampP(actor.pos.x - dx * 0.7, actor.pos.y - dz * 0.7));
+      else if (!back && d > 1.7) actor.walkTo(...clampP(actor.pos.x + dx * Math.min(0.8, d - 1.4), actor.pos.y + dz * Math.min(0.8, d - 1.4)));
+      else if (k === 0) actor.walkTo(...clampP(actor.pos.x - dz * 0.5, actor.pos.y + dx * 0.25));
+    } else actor.walkTo(...clampP(actor.pos.x + (actor.pos.x > 0 ? -0.6 : 0.6), actor.pos.y + 0.3)); // solo: drift toward the light
   }
 
   applyStyle(raw) {
@@ -219,6 +251,7 @@ export class Director {
   }
   step(dt) {
     for (const a of this.actors.values()) a.update(dt, 0);
+    this.frameShot();
     if (!this.paused && this.state !== 'stopped') {
       const c = this.cur;
       if (c) {
@@ -235,6 +268,14 @@ export class Director {
       } else if (this.queue.length) this.next();
       else if (this.streamDone && (this.state === 'performing' || this.state === 'parsing')) this.finish();
     }
+  }
+  /** Tell the camera/spotlight where the speaker and the people around them are *right now* (not where they were at the cue). */
+  frameShot() {
+    const sp = this.cur?.actor || this.getActor(this.lastSpeakers[0]);
+    if (!sp || !sp.onstage) return;
+    const pts = [{ x: sp.pos.x, z: sp.pos.y }];
+    for (const a of this.actors.values()) if (a !== sp && a.onstage && !a.leaving && !(a.ghost && a.fade < 0.3)) pts.push({ x: a.pos.x, z: a.pos.y });
+    this.theater.setShot(pts);
   }
   stripRuntime(b) { const { id, rateMul, ...rest } = b; return rest; }
 

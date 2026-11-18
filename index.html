@@ -21,7 +21,7 @@
         <textarea id="script" rows="7" spellcheck="false"></textarea>
         <div class="samples" id="samples"></div>
         <div class="row">
-          <button id="startBtn" class="primary" data-i18n="start"></button>
+          <button id="startBtn" class="primary"></button>
           <button id="pauseBtn" data-i18n="pause" disabled></button>
           <button id="stopBtn" data-i18n="stop" disabled></button>
           <button id="replayBtn" data-i18n="replay" disabled></button>
@@ -33,12 +33,13 @@
       <section>
         <div class="stats">
           <div><span class="k" data-i18n="status"></span><b id="status">—</b></div>
+          <div><span class="k" data-i18n="setLabel"></span><b id="setName">—</b></div>
           <div><span class="k" data-i18n="ttfl"></span><b id="ttfl">— ms</b></div>
           <div><span class="k" data-i18n="firstBeat"></span><b id="tfb">— ms</b></div>
         </div>
       </section>
 
-      <section>
+      <section id="directSection">
         <label for="directIn" data-i18n="directLabel"></label>
         <div class="row">
           <input id="directIn" type="text" autocomplete="off" />

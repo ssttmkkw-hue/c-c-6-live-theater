@@ -16,6 +16,11 @@ button { background:#2b1822; color:var(--txt); border:1px solid var(--line); bor
 button:hover:not(:disabled) { border-color:var(--gold); }
 button:disabled { opacity:.4; cursor:default; }
 button.primary { background:var(--red); border-color:#d6384f; font-weight:600; flex:1; }
+body.live #startBtn { background:#2b1822; border-color:var(--line); font-weight:400; flex:0 0 auto; }
+body.live #pauseBtn:not(:disabled) { background:var(--gold); color:#2a1500; border-color:var(--gold); font-weight:600; }
+body.live #directSection { border-top-color:var(--gold); box-shadow:0 -1px 0 rgba(232,182,76,.4); }
+body.live #directBtn { background:var(--red); border-color:#d6384f; font-weight:600; }
+body.live #directIn { border-color:#7a5a2a; }
 button.small { padding:4px 9px; font-size:12px; }
 button.active { background:var(--gold); color:#2a1500; border-color:var(--gold); }
 .row { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
@@ -29,7 +34,10 @@ button.active { background:var(--gold); color:#2a1500; border-color:var(--gold);
 .dlog { font-size:12px; color:var(--mut); margin-top:6px; min-height:18px; }
 #beatLog { list-style:none; margin:0; padding:0; max-height:200px; overflow-y:auto; font-size:12px; border:1px solid var(--line); border-radius:6px; background:#120a0f; }
 #beatLog li { padding:3px 6px; border-bottom:1px solid #261822; display:grid; grid-template-columns:auto 1fr; gap:2px 6px; opacity:.7; }
-#beatLog li b { color:var(--gold); } #beatLog li i { grid-column:2; color:var(--mut); font-size:10px; }
+#beatLog li b { color:var(--gold); } #beatLog li i { grid-column:2; font-style:normal; display:flex; gap:5px; margin-top:1px; }
+#beatLog li i span { font-size:11.5px; line-height:1; padding:2px 7px; border-radius:9px; background:#2c1a25; color:#d9c8bc; }
+#beatLog li i .e { color:#1b0e12; font-weight:600; background:var(--ec,#bbb); }
+.e-angry{--ec:#ff8a7a}.e-sad{--ec:#8fb0ff}.e-proud{--ec:#ffd27a}.e-contemplative{--ec:#c3d4f0}.e-gasp{--ec:#e8f4ff}.e-happy{--ec:#fff08a}.e-afraid{--ec:#c9b8ff}.e-tender{--ec:#ffc0d6}.e-neutral{--ec:#cfc6bd}
 #beatLog li.now { background:#3a1a28; opacity:1; } #beatLog li.inj b { color:#7fd6ff; }
 details { margin-top:14px; border-top:1px solid var(--line); padding-top:10px; }
 summary { cursor:pointer; color:var(--mut); } details input, details select { margin-top:6px; }

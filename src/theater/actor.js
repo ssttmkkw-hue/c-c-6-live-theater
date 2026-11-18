@@ -10,7 +10,7 @@ const SKIN = ['#f1c9a5', '#d9a47a', '#b9835a', '#8a5a3a', '#f4d6bd'];
 
 // ---- emotion postures:  chestX, headX, headZ, arms [shoulderX, outward, elbow] ----
 const EMO = {
-  neutral:       { chestX: 0.03, headX: 0, headZ: 0, L: [0.05, 0.1, -0.15], R: [0.05, 0.1, -0.15], breath: 1, shake: 0, bounce: 0 },
+  neutral:       { chestX: 0.03, headX: 0, headZ: 0, L: [-0.05, 0.2, -0.4], R: [-0.05, 0.2, -0.4], breath: 1, shake: 0, bounce: 0 },
   angry:         { chestX: 0.16, headX: 0.14, headZ: 0, L: [-0.5, 0.35, -1.2], R: [-0.5, 0.35, -1.2], breath: 2.2, shake: 0.02, bounce: 0 },
   sad:           { chestX: 0.3, headX: 0.42, headZ: 0.1, L: [0.1, 0.05, -0.1], R: [0.1, 0.05, -0.1], breath: 0.6, shake: 0, bounce: 0 },
   proud:         { chestX: -0.12, headX: -0.14, headZ: 0, L: [0.15, 0.75, -1.5], R: [0.15, 0.75, -1.5], breath: 1, shake: 0, bounce: 0 },
@@ -25,22 +25,24 @@ export const EMOTIONS = Object.keys(EMO);
 // ---- gestures: return overrides given time-in-gesture t and strength a (0.6..1.4) ----
 const GEST = {
   none: () => ({}),
+  // big alternating hand arcs + a lean/twist; read clearly from the back of the house
   talk: (t, a) => ({
-    R: [-0.55 + 0.35 * a * Math.sin(t * 2.3), 0.3, -0.9 + 0.4 * a * Math.sin(t * 3.1 + 1)],
-    L: [-0.3 + 0.2 * a * Math.sin(t * 1.9 + 2), 0.25, -0.6 + 0.3 * a * Math.sin(t * 2.7)],
+    R: [-0.75 + 0.55 * a * Math.sin(t * 2.3) - 0.2 * a * Math.max(0, Math.sin(t * 4.1)), 0.45 + 0.25 * a * Math.sin(t * 1.7), -1.0 + 0.55 * a * Math.sin(t * 3.1 + 1)],
+    L: [-0.45 + 0.4 * a * Math.sin(t * 1.9 + 2), 0.4 + 0.2 * a * Math.sin(t * 2.3 + 1), -0.8 + 0.45 * a * Math.sin(t * 2.7)],
+    twist: 0.12 * Math.sin(t * 1.1),
   }),
-  point: (t, a) => ({ R: [-1.45 + 0.07 * Math.sin(t * 3), -0.05, -0.08], chestX: 0.07 * a, headX: -0.03 }),
-  bow: t => { const k = Math.sin(clamp(t / 1.9, 0, 1) * Math.PI); return { chestX: 1.05 * k, headX: 0.25 * k, L: [0.25 * k, 0.1, -0.1], R: [0.25 * k, 0.1, -0.1] }; },
+  point: (t, a) => ({ R: [-1.5 + 0.1 * Math.sin(t * 3.2) - 0.12 * Math.max(0, Math.sin(t * 5)), -0.12, -0.05], L: [0.1, 0.25, -0.5], chestX: 0.08 * a, headX: -0.03, twist: -0.28 }),
+  bow: t => { const k = Math.sin(clamp(t / 2.6, 0, 1) * Math.PI); return { chestX: 1.1 * k, headX: 0.25 * k, L: [0.25 * k, 0.1, -0.1], R: [0.25 * k, 0.1, -0.1] }; },
   kneel: () => ({ R: [-0.55, 0.05, -1.7], L: [0.1, 0.1, -0.2], chestX: 0.12, headX: 0.25, kneel: 1 }),
   stand: () => ({ kneel: 0 }),
-  gasp: (t, a) => { const k = t < 1 ? 1 : 0.4; const j = t < 0.3 ? 1 : 0; return { chestX: -0.15 - 0.2 * j * a, headX: -0.2, L: [-0.9 * k, 0.8 * k, -0.4], R: [-0.9 * k, 0.8 * k, -0.4] }; },
-  angry: (t, a) => ({ chestX: 0.12, L: [-0.9, 0.4, -1.3], R: [-1.0 + 0.3 * a * Math.sin(t * 9), 0.2, -1.2 + 0.2 * Math.sin(t * 9)], headX: 0.15, stomp: 1 }),
+  gasp: (t, a) => { const k = t < 1 ? 1 : 0.75; const j = t < 0.3 ? 1 : 0; return { chestX: -0.15 - 0.2 * j * a, headX: -0.2, L: [-0.95 * k, 0.9 * k, -0.4], R: [-0.95 * k, 0.9 * k, -0.4] }; },
+  angry: (t, a) => ({ chestX: 0.12, L: [-0.9, 0.4, -1.3], R: [-1.05 + 0.4 * a * Math.sin(t * 9), 0.2, -1.2 + 0.25 * Math.sin(t * 9)], headX: 0.15, stomp: 1, twist: -0.1 }),
   sad: () => ({ R: [-1.15, -0.1, -2.1], chestX: 0.3, headX: 0.5 }),
-  proud: () => ({ chestX: -0.14, headX: -0.15, L: [0.15, 0.8, -1.55], R: [0.15, 0.8, -1.55] }),
+  proud: () => ({ chestX: -0.14, headX: -0.15, L: [0.15, 0.85, -1.55], R: [0.15, 0.85, -1.55] }),
   think: () => ({ R: [-0.95, 0.0, -2.0], L: [-0.5, 0.0, -1.3], headZ: 0.14, headX: 0.12 }),
   hug: () => ({ chestX: 0.1, L: [-1.2, -0.1, -0.9], R: [-1.2, -0.1, -0.9], headZ: 0.12 }),
   wave: (t, a) => ({ R: [-0.1, 2.3, -0.5 + 0.5 * a * Math.sin(t * 7)], headZ: 0.08 }),
-  shrug: () => ({ L: [0, 0.55, -1.25], R: [0, 0.55, -1.25], headZ: 0.12 }),
+  shrug: () => ({ L: [0, 0.6, -1.3], R: [0, 0.6, -1.3], headZ: 0.14, chestX: -0.04 }),
   laugh: (t, a) => ({ chestX: -0.1 + 0.1 * a * Math.sin(t * 14), headX: -0.2, L: [-0.3, 0.3, -0.8], R: [-0.3, 0.3, -0.8], bob: 0.02 }),
 };
 export const GESTURES = Object.keys(GEST);
@@ -63,7 +65,8 @@ export class Actor {
     this.fade = this.ghost ? 0 : 1; this.fadeTarget = this.fade;
     this.kneelState = 0;
     this.lookGetter = null; this.headYaw = 0;
-    this.cur = { chestX: 0, headX: 0, headZ: 0, L: [0, 0.1, 0], R: [0, 0.1, 0], kneel: 0, walk: 0, shake: 0, bounce: 0, breath: 1 };
+    this.cur = { chestX: 0, headX: 0, headZ: 0, L: [0, 0.1, 0], R: [0, 0.1, 0], kneel: 0, walk: 0, shake: 0, bounce: 0, breath: 1, twist: 0, shift: 0, emph: 0, nod: 0 };
+    this.remain = 0; this.nodAt = 1.5 + Math.random() * 2; this.fid = null; this.fidAt = 3 + Math.random() * 4; this.cape = null;
     this.mats = [];
     this.build(spec);
     this.root.visible = false;
@@ -74,8 +77,11 @@ export class Actor {
     const skinHex = g ? '#e8f4ff' : this.look.accessory === 'antenna' ? '#9aa7ad' : SKIN[this.index % SKIN.length];
     const ghostOpts = g ? { transparent: true, opacity: 0.55, emissive: '#7fb8ff', emissiveIntensity: 0.55, depthWrite: false } : {};
     const M = (col, o) => { const m = mat(col, { ...ghostOpts, ...o }); if (g) m.userData.base = m.opacity; this.mats.push(m); return m; };
-    const cloth = M(g ? '#cfe6ff' : c.getStyle());
-    const dark = M(g ? '#a9c9ee' : c.clone().multiplyScalar(0.55).getStyle());
+    if (!g) { const hsl = {}; c.getHSL(hsl); if (hsl.l < 0.42) c.setHSL(hsl.h, Math.max(hsl.s, 0.32), 0.42); } // never let a costume vanish into the wings
+    const lit = o => ({ emissive: c.clone().multiplyScalar(0.22).getStyle(), emissiveIntensity: 1, ...o });
+    const cloth = M(g ? '#cfe6ff' : c.getStyle(), g ? {} : lit());
+    const dark = M(g ? '#a9c9ee' : c.clone().multiplyScalar(0.62).getStyle(), g ? {} : lit({ emissive: c.clone().multiplyScalar(0.14).getStyle() }));
+    const trim = M(g ? '#ffffff' : c.clone().lerp(new THREE.Color('#fff4d8'), 0.65).getStyle(), g ? {} : { emissive: '#3a3020', emissiveIntensity: 1 });
     const skin = M(skinHex);
     const black = new THREE.MeshStandardMaterial({ color: g ? '#10203a' : '#151515', roughness: 0.4 });
     this.eyeMat = black; if (this.look.accessory === 'antenna') { black.color.set('#00e5ff'); black.emissive = new THREE.Color('#00bcd4'); }
@@ -86,7 +92,14 @@ export class Actor {
     this.spine = new THREE.Group(); this.spine.position.y = 0.04; this.body.add(this.spine);
     this.spine.add(mesh(cap(0.19, 0.3), cloth, [0, 0.31, 0]));
     // belt
-    this.spine.add(mesh(new THREE.BoxGeometry(0.4, 0.05, 0.25), dark, [0, 0.06, 0]));
+    this.spine.add(mesh(new THREE.BoxGeometry(0.4, 0.05, 0.25), trim, [0, 0.06, 0]));
+    this.spine.add(mesh(new THREE.BoxGeometry(0.1, 0.07, 0.03), trim, [0, 0.06, 0.13])); // buckle
+    this.spine.add(mesh(new THREE.BoxGeometry(0.42, 0.045, 0.26), trim, [0, 0.62, 0]));   // collar / shoulder line
+    if (this.look.cape) { // short cape: a silhouette cue from the back of the house
+      this.cape = new THREE.Group(); this.cape.position.set(0, 0.62, -0.17); this.spine.add(this.cape);
+      this.cape.add(mesh(new THREE.BoxGeometry(0.5, 0.9, 0.04), dark, [0, -0.45, -0.02]));
+      this.cape.add(mesh(new THREE.BoxGeometry(0.52, 0.05, 0.05), trim, [0, -0.9, -0.02]));
+    }
 
     this.neck = new THREE.Group(); this.neck.position.y = 0.7; this.spine.add(this.neck);
     this.neck.add(mesh(new THREE.SphereGeometry(0.175, 20, 16), skin, [0, 0.19, 0]));
@@ -119,10 +132,12 @@ export class Actor {
 
     if (g) { // ghosts have no legs: a tapering shroud instead
       for (const l of [this.legL, this.legR]) l.hp.visible = false;
-      this.body.add(mesh(new THREE.ConeGeometry(0.3, 0.9, 14, 1, true), cloth, [0, -0.45, 0]));
+      const skirt = mesh(new THREE.CylinderGeometry(0.24, 0.44, 0.95, 18, 1, true), cloth, [0, -0.5, 0]); skirt.material = cloth.clone(); skirt.material.side = THREE.DoubleSide; this.mats.push(skirt.material); skirt.material.userData.base = cloth.opacity;
+      this.body.add(skirt);
+      this.body.add(mesh(new THREE.CylinderGeometry(0.44, 0.47, 0.06, 18, 1, true), M('#ffffff', { side: THREE.DoubleSide }), [0, -0.97, 0])); // hem
       this.light = new THREE.PointLight('#8fc4ff', 1.2, 6); this.light.position.y = 1.2; this.root.add(this.light);
     }
-    this.root.scale.setScalar(0.92);
+    this.root.scale.setScalar(1.04);
     this.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
     // name tag
     this.root.userData.actor = this;
@@ -160,7 +175,7 @@ export class Actor {
   // ---------- API ----------
   homePos() { return this.home; }
   place(x, z) { this.pos.set(x, z); this.root.position.set(x, 0, z); }
-  wingFor(x) { return { x: x >= 0 ? 9.2 : -9.2, z: -1.2 }; }
+  wingFor(x) { return { x: x >= 0 ? 7.1 : -7.1, z: -1.2 }; }
   enter() {
     this.onstage = true; this.root.visible = true; this.leaving = false;
     if (this.ghost) { this.place(this.home.x, this.home.z); this.fadeTarget = 1; this.yaw = 0; }
@@ -186,26 +201,43 @@ export class Actor {
   update(dt, time) {
     if (!this.onstage) return;
     this.t += dt; this.gestureT += dt; if (this.speaking) this.talkT += dt;
-    const cur = this.cur;
-    // ---- locomotion ----
+    const cur = this.cur, T = this.t;
+    // ---- locomotion (a speaker who is still walking on hurries so the first line is never delivered from the wings) ----
     let speed = 0;
     if (this.target) {
       const dx = this.target.x - this.pos.x, dz = this.target.y - this.pos.y, d = Math.hypot(dx, dz);
-      if (d < 0.08) { this.target = null; if (this.leaving) { this.onstage = this.ghost; this.root.visible = this.ghost; } }
+      this.remain = d;
+      if (d < 0.08) { this.target = null; this.remain = 0; if (this.leaving) { this.onstage = this.ghost; this.root.visible = this.ghost; } }
       else {
-        speed = Math.min(d * 3, 1.9);
-        this.pos.x += dx / d * speed * dt; this.pos.y += dz / d * speed * dt;
+        speed = Math.min(d * 3, 1.9 * (this.speaking && !this.leaving ? 1.45 : 1));
+        const step = Math.min(d, speed * dt);
+        this.pos.x += dx / d * step; this.pos.y += dz / d * step;
         this.desiredYaw = Math.atan2(dx, dz);
       }
-    }
-    // ---- facing: movement dir while walking (except ghosts), else toward look target ----
-    let lookYaw = null;
-    if (this.lookGetter) { const p = this.lookGetter(); if (p) lookYaw = Math.atan2(p.x - this.pos.x, p.z - this.pos.y); }
-    const face = speed > 0.3 && !this.ghost && !(this.leaving && false) ? this.desiredYaw : (lookYaw ?? this.yaw);
+    } else this.remain = 0;
+    // ---- facing: walking direction while far from the mark, otherwise the look target ("cheated out" 30% toward the house) ----
+    let lookYaw = null, lookIsAudience = true;
+    if (this.lookGetter) { const p = this.lookGetter(); if (p) { lookYaw = Math.atan2(p.x - this.pos.x, p.z - this.pos.y); lookIsAudience = Math.abs(p.z - 11) < 0.5 && Math.abs(p.y - 1.6) < 0.5; } }
+    let bodyYaw = lookYaw;
+    if (bodyYaw != null && !lookIsAudience && !this.ghost) bodyYaw += angDiff(bodyYaw, 0) * 0.3;
+    const walkFace = speed > 0.3 && !this.ghost && this.remain > 0.9;
+    const face = walkFace ? this.desiredYaw : (bodyYaw ?? this.yaw);
     const turn = angDiff(this.yaw, face);
-    this.yaw += clamp(turn, -5 * dt, 5 * dt) * (Math.abs(turn) > 0.02 ? 1 : 0) + (Math.abs(turn) <= 0.02 ? turn : 0);
-    const headTarget = lookYaw != null ? clamp(angDiff(this.yaw, lookYaw), -0.8, 0.8) : 0;
+    this.yaw += Math.abs(turn) > 0.02 ? clamp(turn, -5 * dt, 5 * dt) : turn;
+    const headTarget = lookYaw != null ? clamp(angDiff(this.yaw, lookYaw), -1.0, 1.0) : 0;
     this.headYaw = lerp(this.headYaw, headTarget, 1 - Math.exp(-8 * dt));
+
+    // ---- listener life: nods, fidgets (only when idle on a mark) ----
+    const standing = !this.target && !this.leaving;
+    const idle = standing && !this.speaking && this.gestureName === 'none';
+    if (!this.speaking && standing) { this.nodAt -= dt; if (this.nodAt <= 0) { this.nodAge = 0; this.nodAt = 2 + Math.random() * 3.5; } }
+    this.nodAge = (this.nodAge ?? 9) + dt;
+    const nodPulse = this.nodAge < 0.7 ? Math.sin(this.nodAge / 0.7 * Math.PI) * 0.2 : 0;
+    if (idle) {
+      this.fidAt -= dt;
+      if (!this.fid && this.fidAt <= 0) { this.fid = { name: ['think', 'shrug', 'talk', 'talk'][Math.floor(Math.random() * 4)], t: 0, dur: 1.6 + Math.random() * 1.6 }; }
+      if (this.fid) { this.fid.t += dt; if (this.fid.t > this.fid.dur) { this.fid = null; this.fidAt = 3 + Math.random() * 5; } }
+    } else if (this.fid) { this.fid = null; this.fidAt = 3 + Math.random() * 3; }
 
     // ---- target pose ----
     const k = clamp(0.35 + this.intensity * 0.95, 0.35, 1.3);
@@ -214,62 +246,76 @@ export class Actor {
     const tg = {
       chestX: mix(n.chestX, base.chestX), headX: mix(n.headX, base.headX), headZ: mix(n.headZ, base.headZ),
       L: base.L.map((v, i) => mix(n.L[i], v)), R: base.R.map((v, i) => mix(n.R[i], v)),
-      kneel: this.kneelState, shake: base.shake * k, bounce: base.bounce * k, breath: base.breath,
+      kneel: this.kneelState, shake: base.shake * k, bounce: base.bounce * k, breath: base.breath, twist: 0,
     };
-    const amp = 0.55 + this.intensity * 0.9;
-    let gt = GEST[this.gestureName] || GEST.none;
-    // idle "talk" overlay while speaking even if the beat's gesture is 'none'
+    const amp = 0.7 + this.intensity * 1.0;
+    const gt = GEST[this.gestureName] || GEST.none;
     const g = this.speaking || this.gestureName !== 'none' ? gt(this.gestureT, amp) : {};
     const talkG = this.speaking && this.gestureName === 'none' ? GEST.talk(this.talkT, amp) : {};
-    const ov = { ...talkG, ...g };
+    const fidG = this.fid ? GEST[this.fid.name](this.fid.t, 0.55) : {};
+    const ov = { ...fidG, ...talkG, ...g };
     for (const kk of ['chestX', 'headX', 'headZ']) if (ov[kk] != null) tg[kk] = kk === 'headZ' ? ov[kk] : lerp(tg[kk], ov[kk], 0.9);
     if (ov.L) tg.L = ov.L; if (ov.R) tg.R = ov.R;
     if (ov.kneel != null) tg.kneel = ov.kneel;
-    // the arms: gestures only when not walking; walking blends in a swing
+    if (ov.twist != null) tg.twist = ov.twist;
+    // vocal emphasis: while speaking, every phrase peak pushes the arms/torso a little further (also on held poses like point/proud)
+    const emph = this.speaking ? Math.pow(Math.max(0, Math.sin(this.talkT * 3.3 + this.index)), 2) : 0;
+    if (emph > 0 && this.gestureName !== 'talk' && this.gestureName !== 'none') {
+      tg.R = [tg.R[0] - 0.14 * emph * amp, tg.R[1] + 0.05 * emph, tg.R[2] - 0.12 * emph]; tg.L = [tg.L[0] - 0.1 * emph * amp, tg.L[1] + 0.1 * emph, tg.L[2]];
+    }
+    // arms swing when walking
     const walkW = this.ghost ? 0 : clamp(speed / 1.2, 0, 1);
     cur.walk = lerp(cur.walk, walkW, 1 - Math.exp(-10 * dt));
     this.walkPh += speed * dt * 4.2;
     const sw = Math.sin(this.walkPh);
     if (cur.walk > 0.02) {
-      const w = cur.walk;
-      tg.L = [lerp(tg.L[0], sw * 0.55, w), lerp(tg.L[1], 0.08, w), lerp(tg.L[2], -0.25, w)];
-      tg.R = [lerp(tg.R[0], -sw * 0.55, w), lerp(tg.R[1], 0.08, w), lerp(tg.R[2], -0.25, w)];
+      const w = cur.walk * (this.speaking ? 0.6 : 1); // talking-while-walking keeps some of the gesture
+      tg.L = [lerp(tg.L[0], sw * 0.7, w), lerp(tg.L[1], 0.1, w), lerp(tg.L[2], -0.3, w)];
+      tg.R = [lerp(tg.R[0], -sw * 0.7, w), lerp(tg.R[1], 0.1, w), lerp(tg.R[2], -0.3, w)];
     }
     // smoothing
     const s = 1 - Math.exp(-11 * dt);
     cur.chestX = lerp(cur.chestX, tg.chestX, s); cur.headX = lerp(cur.headX, tg.headX, s); cur.headZ = lerp(cur.headZ, tg.headZ, s);
     for (let i = 0; i < 3; i++) { cur.L[i] = lerp(cur.L[i], tg.L[i], s); cur.R[i] = lerp(cur.R[i], tg.R[i], s); }
     cur.kneel = lerp(cur.kneel, tg.kneel, 1 - Math.exp(-5 * dt));
+    cur.twist = lerp(cur.twist, tg.twist, 1 - Math.exp(-6 * dt));
     cur.shake = tg.shake; cur.bounce = tg.bounce; cur.breath = lerp(cur.breath, tg.breath, 1 - Math.exp(-3 * dt));
+    cur.emph = emph; cur.nod = lerp(cur.nod, nodPulse, 1 - Math.exp(-14 * dt));
     if (this.startle) { this.startle = Math.max(0, this.startle - dt * 3); }
+    // weight shift: a slow side-to-side transfer that never fully stops (stronger while standing)
+    const idleW = (1 - cur.walk) * (1 - cur.kneel);
+    cur.shift = lerp(cur.shift, Math.sin(T * 0.5 + this.index * 2.1) * (this.speaking ? 1.3 : 1), 1 - Math.exp(-2 * dt));
+    const sh = cur.shift * idleW;
 
     // ---- apply to joints ----
-    const T = this.t;
     const breath = Math.sin(T * 1.8 * cur.breath) * 0.012 * cur.breath;
     const trem = cur.shake ? Math.sin(T * 38) * cur.shake : 0;
     const startle = this.startle || 0;
-    this.spine.rotation.x = cur.chestX - startle * 0.25 + breath * 2;
-    this.spine.rotation.y = Math.sin(T * 0.7) * 0.03 + (this.speaking ? Math.sin(T * 2.1) * 0.05 : 0) + this.headYaw * 0.25;
-    this.spine.rotation.z = Math.sin(T * 0.5 + this.index) * 0.015 + trem;
+    const lean = idle && this.lookGetter && !lookIsAudience ? 0.05 : 0; // listeners lean in toward the speaker
+    this.spine.rotation.x = cur.chestX - startle * 0.25 + breath * 2 + lean + cur.emph * 0.07 * amp;
+    this.spine.rotation.y = Math.sin(T * 0.7) * 0.04 + cur.twist + this.headYaw * 0.35;
+    this.spine.rotation.z = Math.sin(T * 0.5 + this.index) * 0.02 + trem + sh * 0.035;
     this.spine.scale.set(1 + breath, 1 + breath * 1.5, 1 + breath);
-    const nod = this.speaking ? Math.sin(this.talkT * 5.5) * 0.04 + Math.sin(this.talkT * 3.1) * 0.03 : 0;
-    this.neck.rotation.set(cur.headX + nod, this.headYaw * 0.75 + (Math.sin(T * 0.4 + this.index) * 0.04), cur.headZ, 'YXZ');
-    const setArm = (a, v, side) => { a.sh.rotation.set(v[0] + trem * 2, 0, side * (v[1] + Math.sin(T * 1.8 + side) * 0.012), 'XYZ'); a.el.rotation.x = v[2]; };
+    const nod = this.speaking ? Math.sin(this.talkT * 5.5) * 0.05 + Math.sin(this.talkT * 3.1) * 0.04 + cur.emph * 0.08 : cur.nod;
+    this.neck.rotation.set(cur.headX + nod, this.headYaw * 0.7 + Math.sin(T * 0.4 + this.index) * 0.05, cur.headZ + (idle ? Math.sin(T * 0.33 + this.index) * 0.04 : 0), 'YXZ');
+    const setArm = (a, v, side) => { a.sh.rotation.set(v[0] + trem * 2, 0, side * (v[1] + Math.sin(T * 1.8 + side) * 0.015 + idleW * Math.sin(T * 0.9 + side * 1.7) * 0.03), 'XYZ'); a.el.rotation.x = v[2]; };
     setArm(this.armL, cur.L, 1); setArm(this.armR, cur.R, -1);
+    if (this.cape) this.cape.rotation.x = 0.06 + cur.walk * 0.28 + Math.sin(T * 1.6) * 0.02 + cur.chestX * 0.3;
 
-    // legs: walk cycle + kneel
+    // legs: walk cycle + kneel + stance shift
     const kn = cur.kneel, w = cur.walk;
     if (!this.ghost) {
       const lift = (ph) => Math.max(0, Math.cos(ph)) * 0.95;
-      this.legL.hp.rotation.x = -sw * 0.6 * w - kn * 0.15;
-      this.legR.hp.rotation.x = sw * 0.6 * w - kn * 0.15;
-      this.legL.kn.rotation.x = lift(this.walkPh) * w + kn * 1.55;
-      this.legR.kn.rotation.x = lift(this.walkPh + Math.PI) * w + kn * 1.55;
+      this.legL.hp.rotation.x = -sw * 0.6 * w - kn * 0.15 + Math.max(0, -sh) * 0.1;
+      this.legR.hp.rotation.x = sw * 0.6 * w - kn * 0.15 + Math.max(0, sh) * 0.1;
+      this.legL.kn.rotation.x = lift(this.walkPh) * w + kn * 1.55 + Math.max(0, -sh) * 0.22;
+      this.legR.kn.rotation.x = lift(this.walkPh + Math.PI) * w + kn * 1.55 + Math.max(0, sh) * 0.22;
     }
     const stomp = ov.stomp && this.speaking ? Math.abs(Math.sin(T * 6)) * 0.03 : 0;
-    const bob = Math.abs(sw) * 0.035 * w + cur.bounce * Math.abs(Math.sin(T * 6)) + (ov.bob ? Math.abs(Math.sin(T * 14)) * ov.bob : 0) - stomp;
+    const bob = Math.abs(sw) * 0.04 * w + cur.bounce * Math.abs(Math.sin(T * 6)) + (ov.bob ? Math.abs(Math.sin(T * 14)) * ov.bob : 0) - stomp;
     let y = 0.97 - kn * 0.47 + bob;
-    if (this.ghost) y += 0.28 + Math.sin(T * 1.3) * 0.08;
+    if (this.ghost) { y += 0.28 + Math.sin(T * 1.3) * 0.08; this.body.rotation.z = Math.sin(T * 0.8) * 0.05; this.body.position.x = Math.sin(T * 0.6) * 0.12; }
+    else { this.body.position.x = sh * 0.05; this.body.rotation.z = -sh * 0.035; }
     this.body.position.y = y;
 
     // mouth

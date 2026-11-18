@@ -26,11 +26,14 @@ const dict = {
     dirAngrier: '更生气', dirSofter: '更温柔', dirSadder: '更悲伤', dirHappier: '更开心', dirScarier: '更害怕', dirProuder: '更骄傲',
     dirFaster: '加快节奏', dirSlower: '放慢节奏', dirEnding: '换个结局', dirHug: '拥抱', dirAudience: '看向观众', dirReplay: '重播', dirReset: '恢复原样',
     chips: ['更生气', '温柔点', '更悲伤', '快一点', '慢一点', '换个结局', '他们拥抱', '看观众', '重播'],
-    sampleHamletIdea: '哈姆雷特遇见鬼魂', sampleHamletText: '哈姆雷特选段（公版）', sampleSkit: '原创短剧：深夜便利店', sampleLove: '一句话：侦探对峙小偷', sampleEn: 'Idea: a king and a jester quarrel',
+    sampleHamletIdea: '哈姆雷特遇见鬼魂', sampleHamletText: '哈姆雷特选段（公版）', sampleSkit: '原创短剧：深夜便利店', sampleLove: '一句话：侦探对峙小偷', sampleEn: '一句话：国王和小丑吵架',
     nowSpeaking: '节拍', noScript: '请先输入内容，或点一个示例。',
     imported: '已导入 JSON', importBad: '导入失败：不是有效的演出 JSON', exported: '已导出',
     keySaved: '密钥已保存在本机', keyCleared: '密钥已清除',
     finished: '— 终 —',
+    restart: '重新开演', setLabel: '场景', you: '你',
+    emo: { neutral: '平静', angry: '愤怒', sad: '悲伤', proud: '骄傲', contemplative: '沉思', gasp: '惊讶', happy: '开心', afraid: '害怕', tender: '温柔' },
+    gest: { none: '站定', talk: '说话', point: '指向', bow: '鞠躬', kneel: '跪下', stand: '起身', gasp: '惊呼', angry: '怒吼', sad: '垂泪', proud: '挺胸', think: '沉思', hug: '拥抱', wave: '挥手', shrug: '耸肩', laugh: '大笑' },
   },
   en: {
     title: 'AI Live Theater',
@@ -62,6 +65,9 @@ const dict = {
     imported: 'JSON imported', importBad: 'Import failed: not a valid performance JSON', exported: 'Exported',
     keySaved: 'Key saved locally', keyCleared: 'Key cleared',
     finished: '— The End —',
+    restart: 'Restart show', setLabel: 'Set', you: 'You',
+    emo: { neutral: 'calm', angry: 'angry', sad: 'sad', proud: 'proud', contemplative: 'pensive', gasp: 'shocked', happy: 'happy', afraid: 'afraid', tender: 'tender' },
+    gest: { none: 'hold', talk: 'talk', point: 'point', bow: 'bow', kneel: 'kneel', stand: 'rise', gasp: 'gasp', angry: 'rage', sad: 'weep', proud: 'chest out', think: 'ponder', hug: 'hug', wave: 'wave', shrug: 'shrug', laugh: 'laugh' },
   },
 };
 

@@ -5,8 +5,9 @@ A performance is a **stream of events**. The unit is the **beat**.
 
 ```jsonc
 // Stream events (what a parser yields, one by one)
-{ "kind": "actor", "name": "Hamlet", "look": {"style":"human|ghost","color":"#2c2c3a","accessory":"crown|hair|hat|helmet|hood|jester|antenna|none"}, "voice": {"pitch":0.95,"rate":1.0} }
+{ "kind": "actor", "name": "Hamlet", "look": {"style":"human|ghost","color":"#2c2c3a","accessory":"crown|hair|hat|helmet|hood|jester|antenna|none","cape":true}, "voice": {"pitch":0.95,"rate":1.0} }
 { "kind": "beat",  "beat": { ... } }
+{ "kind": "scene", "set": "moon|ramparts|shop|alley|hall" }   // optional; otherwise the set is picked from the idea text / actor names
 { "kind": "end" }
 ```
 

@@ -44,7 +44,7 @@ API keys are entered in the UI and stored **only in your browser's `localStorage
 Note: calling an LLM directly from a browser exposes the key to that browser; for anything shared, put a proxy in front instead.
 
 ## Stage & actors
-Everything is procedural (boxes, capsules, spheres; no external assets or fonts). Actors are jointed rigs (hips/spine/neck/shoulders/elbows/hips/knees) driven each frame by emotion posture + gesture + idle breathing + talk motion + walk cycle; they turn to face the speaker. Ghosts are translucent, float, flicker and fade in/out. Camera: audience (behind/above your seat), close-up (follows the speaker), free orbit.
+Everything is procedural (boxes, capsules, spheres; no external assets or fonts). Actors are jointed rigs (hips/spine/neck/shoulders/elbows/hips/knees) driven each frame by emotion posture + gesture + idle breathing + talk motion + walk cycle; listeners turn to the speaker (speakers "cheat out" a little toward the house), nod, shift weight and fidget, and strong beats get a small motivated step. Ghosts are translucent, float, flicker and fade in/out. Costumes are auto-lightened so nobody vanishes into the wings. **Sets** (moonlit stage, castle ramparts, midnight shop, rainy alley, throne hall) are painted on canvas + a few low-poly props and chosen from the idea text or actor names (or an explicit `{kind:'scene'}` event). The audience is varied, turns toward the speaker, reacts (gasp/laugh/sad) and cheers at the end; your gold avatar with the red cap and floating arrow sits in the second-to-last row, seen from behind. Camera: audience (just behind/above your seat), close-up (head-to-knees on the speaker, or a two-shot, tracking live positions), free orbit.
 
 ## Known limitations
 Voices depend on your browser/OS; the local parser's emotion inference is heuristic; idea templates are small; directives are keyword-based (an AI parser could interpret free-form direction — extension point); no collision avoidance between actors; desktop only.
@@ -79,6 +79,6 @@ npm test        # 解析器冒烟测试
 密钥只保存在你浏览器的 `localStorage`，不写入源码、不打印日志、不进 git。`.gitignore` 已覆盖 `.env`、`.env.*`、`node_modules/`、`dist/`。没有密钥时 AI 解析器直接不可用。
 
 ### 已知限制
-语音依赖浏览器/系统；本地情绪推断是启发式的；模板较少；导演指令基于关键词；演员之间没有避让；仅桌面端。
+语音依赖浏览器/系统；场景为程序化绘制、仅 5 种；本地情绪推断是启发式的；模板较少；导演指令基于关键词；演员之间没有避让；仅桌面端。
 
 All art is original and procedural. Hamlet lines are Shakespeare (public domain); the skit is original. / 所有美术均为原创程序化生成；哈姆雷特台词为莎士比亚公版文本；短剧为原创。
