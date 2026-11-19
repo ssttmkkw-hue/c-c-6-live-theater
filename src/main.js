@@ -3,7 +3,8 @@ import { Director } from './director.js';
 import { t, getLang, setLang, onLang, applyStatic } from './i18n.js';
 import { samples } from './samples.js';
 import { pickParser, parsers } from './parsers/index.js';
-import { KEY_STORAGE, MODEL_STORAGE } from './parsers/ai.js';
+import { KEY_STORAGE, MODEL_STORAGE, interpretDirective } from './parsers/ai.js';
+import { normalizeOps } from './directives.js';
 import { speech } from './speech.js';
 import { audio } from './audio.js';
 import { SET_LABEL } from './theater/sets.js';
@@ -66,7 +67,9 @@ const director = new Director(theater, {
     if (!running) els.pause.textContent = t('pause');
   },
   onPaused: p => { els.pause.textContent = t(p ? 'resume' : 'pause'); },
-  onDirective: labels => { logDirective(labels.join(' + ')); },
+  onDirective: (labels, meta) => { logDirective((meta?.interpreted ? '✦ ' : '') + labels.join(' + ')); },
+  // free-text direction -> AI ops, only when the user picked the AI parser (their key, their spend)
+  interpret: (text, ctx) => (els.parserSel.value === 'ai' && parsers.ai.available() ? interpretDirective(text, ctx).then(normalizeOps) : []),
 });
 
 function addBeatRow(b, injected) {
@@ -173,14 +176,28 @@ applyStatic(); refreshStartLabel(); showSet(); renderSamples(); renderViews(); r
 els.script.value = samples[0].text[getLang()];
 setStatus('stIdle');
 
+// adaptive quality: watch the frame rate and step quality down (or carefully back up). ?quality=low|medium|high pins it.
+const pinned = { low: 0, medium: 1, high: 2 }[new URLSearchParams(location.search).get('quality')];
+const perf = { level: pinned ?? 2, acc: 0, frames: 0, ups: 0, fps: 0 };
+theater.setQuality(perf.level);
+function watchFps(dt) {
+  perf.acc += dt; perf.frames++;
+  if (perf.acc < 3) return;
+  perf.fps = perf.frames / perf.acc; perf.acc = 0; perf.frames = 0;
+  if (pinned != null || document.hidden) return;
+  if (perf.fps < 28 && perf.level > 0) theater.setQuality(--perf.level);
+  else if (perf.fps > 57 && perf.level < 2 && perf.ups < 2) { perf.ups++; theater.setQuality(++perf.level); } // at most two upgrades: no oscillation
+}
+
 // main loop
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.3, (now - last) / 1000); last = now;
   director.update(dt);
+  watchFps((now - (frame.prev ?? now)) / 1000); frame.prev = now;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 // build the other sets one at a time in idle moments, so a set change (or the first beat) never pays for canvas work
 (function prewarm(i = 0) { const ids = ['ramparts', 'shop', 'alley', 'hall']; if (i >= ids.length) return; setTimeout(() => { if (!director.firstLine || director.state === 'finished' || director.state === 'idle') { try { theater.sets.warm(ids[i]); } catch { /* ignore */ } prewarm(i + 1); } else prewarm(i); }, 700); })();
-window.__theater = { director, theater }; // handy for debugging / automated tests
+window.__theater = { director, theater, perf }; // handy for debugging / automated tests

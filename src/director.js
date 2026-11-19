@@ -34,7 +34,7 @@ export class Director {
     this.streamDone = true; this.style = newStyle(); this.seq = 0; this.beatNo = 0;
     this.skipEnding = false; this.pendingAlt = false; this.altVariant = 0; this.t0 = 0;
     this.firstLine = false; this.lastSpeakers = []; this.lang = 'zh-CN'; this.actorSpecs = [];
-    this.endedAt = 0; this.setId = 'moon'; this.setExplicit = false; this.closeNext = false; this.idleT = 0; this.adN = 0;
+    this.endedAt = 0; this.setId = 'moon'; this.setExplicit = false; this.closeNext = false; this.idleT = 0; this.adN = 0; this.interpretSeq = 0;
   }
   status(key, ...a) { this.hooks.onStatus?.(key, ...a); }
 
@@ -387,15 +387,38 @@ export class Director {
     const ops = parseDirective(text);
     if (ops.some(o => o.type === 'replay')) { this.replay(); return { ok: true, labels: [tr('dirReplay')] }; }
     if (this.state === 'idle' || this.state === 'stopped') return { ok: false, noShow: true };
+    const free = !ops.length;
+    if (free) ops.push({ type: 'stage', text });
+    const labels = this.applyOps(ops, tr);
+    this.hooks.onDirective?.(labels);
+    this.status('stDirective', labels.join(' + '));
+    // Free text was acted at once as a stage direction; if an interpreter (the AI) is configured, it may
+    // add structured ops a moment later ("make her hesitate" -> softer + slower). Stale answers are ignored.
+    if (free && this.hooks.interpret) {
+      const token = this.token, seq = ++this.interpretSeq;
+      const cast = [...this.actors.values()].map(a => a.name);
+      Promise.resolve(this.hooks.interpret(text, { cast, lang: this.lang })).then(more => {
+        if (token !== this.token || seq !== this.interpretSeq || !more?.length) return;
+        if (this.state === 'idle' || this.state === 'stopped') return;
+        const extra = this.applyOps(more, tr, { quiet: true });
+        if (!extra.length) return;
+        this.hooks.onDirective?.(extra, { interpreted: true });
+        this.status('stDirective', extra.join(' + '));
+      }).catch(() => { /* interpreter is best-effort */ });
+    }
+    return { ok: true, labels };
+  }
+  /** apply canonical ops (from parseDirective / normalizeOps); quiet: no cut-in ad-lib for moods (used for late AI ops) */
+  applyOps(ops, tr, { quiet = false } = {}) {
     const labels = [];
-    if (!ops.length) ops.push({ type: 'stage', text });
     for (const op of ops) {
       switch (op.type) {
         case 'mood': {
           this.style.emotion = op.emotion; this.style.emoLeft = 8;
           this.style.intensity = clamp(this.style.intensity + op.delta, -0.5, 0.6);
           for (const l of op.labels || [op.label]) labels.push(tr(l));
-          this.moodAdlib(op);
+          if (!quiet) this.moodAdlib(op);
+          else if (this.cur?.actor) this.cur.actor.setEmotion(op.emotion, clamp(0.55 + op.delta, 0.3, 1));
           break;
         }
         case 'rate': this.style.rate = clamp(this.style.rate * op.mul, 0.55, 2); labels.push(tr(op.label)); break;
@@ -439,9 +462,7 @@ export class Director {
         default: break;
       }
     }
-    this.hooks.onDirective?.(labels);
-    this.status('stDirective', labels.join(' + '));
-    return { ok: true, labels };
+    return labels;
   }
   /** a mood directive is heard *now*: cut in with a short ad-lib in that mood, a motivated step, and the house reacts */
   moodAdlib(op) {

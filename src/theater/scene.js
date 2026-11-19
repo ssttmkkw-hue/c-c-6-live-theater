@@ -214,6 +214,7 @@ export function createTheater(canvas) {
   let wantFov = HOME.fov;
   spot.target.position.set(0, 0, 0);
 
+  let quality = 2, frameNo = 0;
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
@@ -276,7 +277,15 @@ export function createTheater(canvas) {
     },
     /** live positions of the actors in frame ([speaker, ...others]) for the close-up / two-shot */
     setShot(points) { shot = points; if (points[0]) focus.set(points[0].x, 1.5, points[0].z); },
-    setSet(id) { return sets.show(id); },
+    setSet(id) { renderer.shadowMap.needsUpdate = true; return sets.show(id); },
+    /** 2 = high (default), 1 = medium (1x pixels, shadows every 3rd frame), 0 = low (0.75x pixels, near-static shadows, half-rate audience) */
+    setQuality(q) {
+      quality = clamp(q | 0, 0, 2);
+      renderer.setPixelRatio(quality === 2 ? Math.min(devicePixelRatio, 1.5) : quality === 1 ? 1 : 0.75);
+      renderer.shadowMap.autoUpdate = quality === 2; renderer.shadowMap.needsUpdate = true;
+      resize(); return quality;
+    },
+    get quality() { return quality; },
     /** the house reacts: gasp → jolt, happy → bounce, sad → heads down, angry → lean in */
     react(emo, intensity = 0.5) {
       mood = { emo, level: 0.45 + intensity * 0.55 };
@@ -299,7 +308,10 @@ export function createTheater(canvas) {
       spot.color.lerp(spotColor, 1 - Math.exp(-3 * dt));
       // audience
       applause = Math.max(0, applause - dt);
-      for (const n of npcs) animPerson(n, n.head, n.arms, n.g, n.baseY, dt, 0.5);
+      frameNo++;
+      if (quality < 2 && frameNo % (quality === 1 ? 3 : 12) === 0) renderer.shadowMap.needsUpdate = true; // lower tiers: refresh shadows occasionally
+      if (quality > 0) for (const n of npcs) animPerson(n, n.head, n.arms, n.g, n.baseY, dt, 0.5);
+      else for (let i = frameNo & 1; i < npcs.length; i += 2) { const n = npcs[i]; animPerson(n, n.head, n.arms, n.g, n.baseY, dt * 2, 0.5); } // low: half the house per frame
       animPerson(pNpc, pHead, pArms, player, ps.y + 0.55, dt, 0.35);
       const pov = view !== 'free' && view !== 'audience' && cam.type === 'ots'; // the avatar's own pointer would sit in the lens
       marker.visible = halo.visible = ring.visible = !pov;
